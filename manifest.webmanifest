@@ -1,0 +1,16 @@
+{
+  "name": "Vynex",
+  "short_name": "Vynex",
+  "description": "Smart Semantic Web TV Platform",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#07080d",
+  "theme_color": "#07080d",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
