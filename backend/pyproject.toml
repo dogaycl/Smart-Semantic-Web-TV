@@ -1,0 +1,29 @@
+[project]
+name = "smart-semantic-web-tv-backend"
+version = "0.1.0"
+description = "Backend foundation for the Smart Semantic Web TV Platform"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14.0,<2.0.0",
+  "email-validator>=2.2.0,<3.0.0",
+  "fastapi>=0.115.0,<1.0.0",
+  "pydantic-settings>=2.4.0,<3.0.0",
+  "PyJWT>=2.9.0,<3.0.0",
+  "psycopg[binary]>=3.2.0,<4.0.0",
+  "sqlalchemy>=2.0.35,<3.0.0",
+  "uvicorn[standard]>=0.32.0,<1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28.0,<1.0.0",
+  "pytest>=8.3.0,<9.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

@@ -1,4 +1,4 @@
-import { getCurrentUser } from "./contexts/authContext.js";
+import { getCurrentUser, initializeAuth, isAuthReady } from "./contexts/authContext.js";
 import { AppLayout } from "./components/AppLayout.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
@@ -32,6 +32,8 @@ function resolveRoute() {
 }
 
 function render() {
+  if (!isAuthReady()) return;
+
   const route = resolveRoute();
   const isAuthed = Boolean(getCurrentUser());
 
@@ -50,8 +52,10 @@ function render() {
 }
 
 export const router = {
-  start() {
+  async start() {
     window.addEventListener("hashchange", render);
+    document.addEventListener("auth:changed", render);
+    await initializeAuth();
     render();
   },
   navigate(path) {

@@ -5,9 +5,11 @@ import { Topbar } from "./Topbar.js";
 export function AppLayout(content) {
   const user = getCurrentUser();
   queueMicrotask(() => {
-    document.querySelector("[data-logout]")?.addEventListener("click", () => {
-      logout();
-      location.hash = "/login";
+    document.querySelectorAll("[data-logout]").forEach((element) => {
+      element.addEventListener("click", () => {
+        logout();
+        location.hash = "/login";
+      });
     });
     document.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
       document.querySelector(".sidebar")?.classList.toggle("collapsed");

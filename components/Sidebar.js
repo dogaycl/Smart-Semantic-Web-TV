@@ -30,7 +30,7 @@ export function Sidebar(user) {
       </nav>
       <a class="sidebar-user" href="#/profile">
         <span class="avatar">${user.avatar}</span>
-        <div><strong>${user.username}</strong><small>${user.preferredCategories.slice(0, 2).join(", ")}</small></div>
+        <div><strong>${user.displayName || user.username}</strong><small>${user.preferredCategories.slice(0, 2).join(", ")}</small></div>
       </a>
     </aside>
   `;

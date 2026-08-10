@@ -4,3 +4,11 @@ dist/
 .env.local
 .DS_Store
 Thumbs.db
+.venv/
+backend/.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+*.egg-info/
+backend/*.sqlite

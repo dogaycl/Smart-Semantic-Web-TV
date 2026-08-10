@@ -19,7 +19,7 @@ export function Topbar(user) {
         <a class="media-link ${active(["/my-list"])}" href="#/my-list"><span>▥</span> My Media</a>
         <a class="media-link" href="#/my-list"><span>▰</span> Watchlist</a>
         <a class="signin-pill" href="#/profile">${user.avatar}</a>
-        <button class="signin-button" data-logout>Sign In</button>
+        <button class="signin-button" data-logout>Logout</button>
       </div>
     </header>
   `;
