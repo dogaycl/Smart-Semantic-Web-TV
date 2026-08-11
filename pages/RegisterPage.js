@@ -35,8 +35,8 @@ export function RegisterPage() {
         <h1>Create profile</h1>
         <p>Create a real account backed by the FastAPI authentication service.</p>
         <form id="registerForm" class="form-stack">
-          <label class="form-row"><span>Username</span><input id="username" class="input" autocomplete="username" placeholder="rumeysaaksoy" required /></label>
-          <label class="form-row"><span>Display name</span><input id="displayName" class="input" placeholder="Rümeysa Aksoy" /></label>
+          <label class="form-row"><span>Username</span><input id="username" class="input" autocomplete="username" placeholder="alexstream" required /></label>
+          <label class="form-row"><span>Display name</span><input id="displayName" class="input" placeholder="Alex Morgan" /></label>
           <label class="form-row"><span>Email</span><input id="email" class="input" type="email" autocomplete="email" required /></label>
           <label class="form-row"><span>Password</span><input id="password" class="input" type="password" autocomplete="new-password" minlength="8" required /></label>
           <label class="form-row"><span>Interests</span><input id="interests" class="input" placeholder="Artificial Intelligence, Sports, Science" /></label>

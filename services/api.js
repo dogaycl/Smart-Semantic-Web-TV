@@ -2,6 +2,7 @@ import { channels, content, epgPrograms, epgSlots, rows } from "../data/mockData
 
 const delay = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 export const API_BASE_URL = "http://127.0.0.1:8000";
+const viewsToNumber = (value = "0") => Number(String(value).replace("M", "")) || 0;
 
 export class ApiError extends Error {
   constructor(message, status, payload = null) {
@@ -57,7 +58,7 @@ export async function apiRequest(path, { method = "GET", body, token, headers = 
 
 export const api = {
   getFeatured() {
-    return delay(content[0]);
+    return delay([...content].sort((a, b) => viewsToNumber(b.monthlyViews) - viewsToNumber(a.monthlyViews))[0]);
   },
   getRows() {
     const mapped = Object.fromEntries(

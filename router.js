@@ -5,20 +5,36 @@ import { RegisterPage } from "./pages/RegisterPage.js";
 import { HomePage } from "./pages/HomePage.js";
 import { LiveTvPage } from "./pages/LiveTvPage.js";
 import { LibraryPage } from "./pages/LibraryPage.js";
+import { OnDemandPage } from "./pages/OnDemandPage.js";
 import { DiscoverPage } from "./pages/DiscoverPage.js";
 import { ContentDetailPage } from "./pages/ContentDetailPage.js";
 import { MyListPage } from "./pages/MyListPage.js";
 import { ProfilePage } from "./pages/ProfilePage.js";
+import { ProfilesPage } from "./pages/ProfilesPage.js";
+import { StatsPage } from "./pages/StatsPage.js";
+import { AdminPage } from "./pages/AdminPage.js";
+import { SocialPage } from "./pages/SocialPage.js";
+import { HistoryPage } from "./pages/HistoryPage.js";
+import { AIHubPage } from "./pages/AIHubPage.js";
+import { AITuningPage } from "./pages/AITuningPage.js";
 
 const routes = [
   { path: "/login", public: true, render: LoginPage },
   { path: "/register", public: true, render: RegisterPage },
   { path: "/", render: HomePage },
   { path: "/live-tv", render: LiveTvPage },
+  { path: "/on-demand", render: OnDemandPage },
   { path: "/movies", render: () => LibraryPage("Movies") },
   { path: "/series", render: () => LibraryPage("Series") },
   { path: "/discover", render: DiscoverPage },
+  { path: "/ai", render: AIHubPage },
+  { path: "/ai-tuning", render: AITuningPage },
   { path: "/my-list", render: MyListPage },
+  { path: "/history", render: HistoryPage },
+  { path: "/profiles", render: ProfilesPage },
+  { path: "/stats", render: StatsPage },
+  { path: "/social", render: SocialPage },
+  { path: "/admin", render: AdminPage },
   { path: "/profile", render: ProfilePage },
   { path: "/settings", render: ProfilePage }
 ];

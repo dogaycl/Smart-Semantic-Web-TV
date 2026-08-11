@@ -1,9 +1,9 @@
-import { gradient } from "./ContentCard.js";
+import { mediaBackground } from "./ContentCard.js";
 
 export function VideoPlayer(item) {
   return `
     <section class="video-player">
-      <div class="video-screen" style="--hero:${gradient(item.backdrop)}">
+      <div class="video-screen" style="--hero:${mediaBackground(item, "backdrop")}">
         <div>
           <span class="live-badge">LIVE</span>
           <h1>${item.title}</h1>

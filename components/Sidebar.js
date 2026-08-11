@@ -1,16 +1,48 @@
-const links = [
-  ["/", "Home", "⌂"],
-  ["/live-tv", "Live TV", "▶"],
-  ["/movies", "Movies", "▣"],
-  ["/series", "Series", "▤"],
-  ["/discover", "Discover / Search", "AI"],
-  ["/my-list", "My List / Favorites", "★"],
-  ["/profile", "Profile", "◉"],
-  ["/settings", "Settings", "⚙"]
+const navGroups = [
+  {
+    title: "Watch",
+    icon: "▶",
+    links: [
+      ["/", "Home", "⌂"],
+      ["/live-tv", "Live TV", "▶"],
+      ["/on-demand", "On Demand", "▥"]
+    ]
+  },
+  {
+    title: "AI",
+    icon: "AI",
+    links: [
+      ["/discover", "Smart Search", "⌕"],
+      ["/ai", "AI Hub", "✦"],
+      { type: "label", text: "Train AI" },
+      ["/ai-tuning", "Preference Tuning", "⚙"]
+    ]
+  },
+  {
+    title: "Personal",
+    icon: "★",
+    links: [
+      ["/my-list", "My List", "★"],
+      ["/history", "Watch History", "◴"],
+      ["/social", "Social TV", "☷"]
+    ]
+  }
 ];
 
 export function Sidebar(user) {
   const current = location.hash.replace("#", "") || "/";
+  const isGroupOpen = (links) => links.some((item) => Array.isArray(item) && current === item[0]);
+  const renderNavItem = (item) => {
+    if (!Array.isArray(item)) {
+      return `<span class="nav-subtitle">${item.text}</span>`;
+    }
+    const [href, label, icon] = item;
+    return `
+      <a class="nav-link ${current === href ? "active" : ""}" href="#${href}">
+        <b class="nav-icon">${icon}</b><span>${label}</span>
+      </a>
+    `;
+  };
   return `
     <aside class="sidebar">
       <div class="sidebar-head">
@@ -21,17 +53,19 @@ export function Sidebar(user) {
         <button class="icon-button" data-sidebar-toggle title="Collapse sidebar">≡</button>
       </div>
       <nav class="nav-list">
-        ${links.map(([href, label, icon]) => `
-          <a class="nav-link ${current === href ? "active" : ""}" href="#${href}">
-            <b class="nav-icon">${icon}</b><span>${label}</span>
-          </a>
+        ${navGroups.map((group) => `
+          <details class="nav-group" ${isGroupOpen(group.links) ? "open" : ""}>
+            <summary><b class="nav-icon">${group.icon}</b><span>${group.title}</span></summary>
+            <div class="nav-group-links">
+              ${group.links.map(renderNavItem).join("")}
+            </div>
+          </details>
         `).join("")}
-        <button class="nav-link danger-button" data-logout><b class="nav-icon">↳</b><span>Logout</span></button>
       </nav>
-      <a class="sidebar-user" href="#/profile">
+      <div class="sidebar-user">
         <span class="avatar">${user.avatar}</span>
         <div><strong>${user.displayName || user.username}</strong><small>${user.preferredCategories.slice(0, 2).join(", ")}</small></div>
-      </a>
+      </div>
     </aside>
   `;
 }
