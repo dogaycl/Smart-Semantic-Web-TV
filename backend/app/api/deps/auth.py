@@ -10,16 +10,12 @@ from app.repositories.user_repository import UserRepository
 http_bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
+def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
     db: Session = Depends(get_db),
 ):
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication credentials were not provided.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return None
 
     try:
         payload = decode_access_token(credentials.credentials)
@@ -56,3 +52,15 @@ def get_current_user(
         )
 
     return user
+
+
+def get_current_user(
+    current_user=Depends(get_current_user_optional),
+):
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return current_user

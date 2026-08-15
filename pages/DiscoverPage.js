@@ -1,20 +1,21 @@
 import { api } from "../services/api.js";
 
 function compactResult(item) {
+  const metaParts = [item.duration, item.year, item.channel?.name].filter(Boolean);
   return `
-    <a class="discover-card" href="#/content/${item.id}">
-      <img src="${item.poster}" alt="${item.title} poster" loading="lazy" />
+    <a class="discover-card" href="${item.routePath || `#/content/${item.id}`}"${item.liveChannelId ? ` data-discover-live-channel="${item.liveChannelId}"` : ""}>
+      ${item.poster ? `<img src="${item.poster}" alt="${item.title} poster" loading="lazy" />` : `<div class="discover-card-fallback">${item.category}</div>`}
       <div class="discover-card-body">
         <div class="discover-card-top">
           <span>${item.category}</span>
-          <strong>${item.relevance}% match</strong>
+          <strong>${Math.round((item.searchScore || 0) * 100)}% match</strong>
         </div>
         <h3>${item.title}</h3>
         <p>${item.description}</p>
+        ${item.recommendationReason ? `<p class="discover-card-reason">${item.recommendationReason}</p>` : ""}
         <div class="discover-meta">
-          <span>IMDb ${item.imdb || "N/A"}</span>
-          <span>${item.duration}</span>
-          <span>${item.year}</span>
+          <span>${item.imdb ? `TMDB ${item.imdb}` : (item.availability?.label || "Catalog")}</span>
+          ${metaParts.map((part) => `<span>${part}</span>`).join("")}
         </div>
       </div>
     </a>
@@ -38,9 +39,20 @@ export function DiscoverPage() {
     if (globalQuery) input.value = globalQuery;
 
     const render = async () => {
-      const results = await api.searchSemantic(input.value);
-      countMount.textContent = `${results.length} smart matches`;
-      resultsMount.innerHTML = results.map(compactResult).join("");
+      resultsMount.innerHTML = `<div class="empty-state">Running semantic search...</div>`;
+      try {
+        const results = await api.searchSemantic(input.value);
+        countMount.textContent = `${results.length} smart matches`;
+        resultsMount.innerHTML = results.length ? results.map(compactResult).join("") : `<div class="empty-state">No matching live or on-demand titles were found.</div>`;
+        document.querySelectorAll("[data-discover-live-channel]").forEach((element) => {
+          element.addEventListener("click", () => {
+            sessionStorage.setItem("synapse.live.channel-id", element.dataset.discoverLiveChannel);
+          });
+        });
+      } catch (error) {
+        countMount.textContent = "0 smart matches";
+        resultsMount.innerHTML = `<div class="empty-state">${error.message || "Semantic search is unavailable right now."}</div>`;
+      }
     };
 
     document.querySelector("#semanticForm").addEventListener("submit", (event) => {
@@ -73,7 +85,7 @@ export function DiscoverPage() {
         <div class="discover-search-copy">
           <span class="eyebrow">Natural-language discovery</span>
           <h1>Describe what you want to watch in plain language.</h1>
-          <p>Vynex ranks results by combining genre, runtime, IMDb score, mood, and your personal interests.</p>
+          <p>Vynex now searches real movies, series, and upcoming live programs using semantic relevance, runtime intent, and your saved profile signals.</p>
         </div>
         <form id="semanticForm" class="discover-search-form">
           <input id="semanticInput" value="Recommend something under 90 minutes with comedy and sci-fi." />
@@ -102,7 +114,7 @@ export function DiscoverPage() {
           </div>
           <div class="ai-insight-card">
             <span class="eyebrow">AI insight</span>
-            <p>This is not classic keyword search; it simulates meaning, runtime intent, genres, and user taste together.</p>
+            <p>This uses real backend semantic search over live EPG and catalog metadata rather than a static keyword-only mock.</p>
           </div>
           <div class="ai-insight-card">
             <span class="eyebrow">Why it is different</span>

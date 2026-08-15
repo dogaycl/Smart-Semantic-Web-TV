@@ -13,7 +13,7 @@ const navGroups = [
     icon: "AI",
     links: [
       ["/discover", "Smart Search", "⌕"],
-      ["/ai", "AI Hub", "✦"],
+      ["/ai", "AI Planner", "✦"],
       { type: "label", text: "Train AI" },
       ["/ai-tuning", "Preference Tuning", "⚙"]
     ]

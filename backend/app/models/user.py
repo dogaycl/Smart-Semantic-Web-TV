@@ -36,3 +36,8 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    viewing_plans = relationship(
+        "ViewingPlan",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

@@ -1,5 +1,5 @@
 const KEY = "synapse.my-list";
-const defaults = ["dune-part-two", "stranger-things", "interstellar"];
+const defaults = [];
 
 export function getFavorites() {
   const stored = localStorage.getItem(KEY);

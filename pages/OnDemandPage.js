@@ -1,54 +1,76 @@
-import { content } from "../data/mockData.js";
 import { ContentRow } from "../components/ContentRow.js";
 import { ContentCard } from "../components/ContentCard.js";
 import { getWatchHistory } from "../services/userDataService.js";
+import { api } from "../services/api.js";
 
-function byIds(ids) {
-  return ids.map((id) => content.find((item) => item.id === id)).filter(Boolean);
+function sortByReleaseDate(items) {
+  return [...items].sort((a, b) => String(b.releaseDate || "").localeCompare(String(a.releaseDate || "")));
 }
 
 export function OnDemandPage() {
-  const history = getWatchHistory().map((entry) => content.find((item) => item.id === entry.contentId)).filter(Boolean);
-  const movies = content.filter((item) => item.category === "Movies");
-  const series = content.filter((item) => item.category === "Series");
-  const docs = content.filter((item) => item.category === "Documentaries" || item.category === "Technology" || item.category === "Science");
-  const recentlyAdded = byIds(["oppenheimer", "the-last-of-us", "john-wick-4", "wednesday", "avatar-way-water"]);
-  const filterGroups = {
-    all: [...recentlyAdded, ...movies.slice(0, 8), ...series.slice(0, 6), ...docs.slice(0, 6)],
-    movies,
-    series,
-    docs,
-    new: recentlyAdded
-  };
-
   queueMicrotask(() => {
-    const buttons = [...document.querySelectorAll("[data-vod-filter]")];
-    const focusTitle = document.querySelector("[data-vod-focus-title]");
-    const focusGrid = document.querySelector("[data-vod-focus-grid]");
-    const rows = [...document.querySelectorAll("[data-vod-row]")];
+    (async () => {
+      const buttons = [...document.querySelectorAll("[data-vod-filter]")];
+      const focusTitle = document.querySelector("[data-vod-focus-title]");
+      const focusGrid = document.querySelector("[data-vod-focus-grid]");
+      const rows = [...document.querySelectorAll("[data-vod-row]")];
 
-    const labels = {
-      all: "All On Demand",
-      movies: "Movies",
-      series: "Series & Episodes",
-      docs: "Documentaries & Science",
-      new: "Recently Added"
-    };
+      try {
+        const allItems = await api.getAllCatalog();
+        const historyEntries = getWatchHistory();
+        const history = await api.getCatalogBySlugs(historyEntries.map((entry) => entry.contentId));
+        const movies = allItems.filter((item) => item.contentType === "movie");
+        const series = allItems.filter((item) => item.contentType === "tv");
+        const docs = allItems.filter((item) => item.genres.includes("Documentary") || item.genres.includes("Science Fiction") || item.genres.includes("Sci-Fi & Fantasy"));
+        const recentlyAdded = sortByReleaseDate(allItems).slice(0, 10);
+        const filterGroups = {
+          all: [...recentlyAdded.slice(0, 6), ...movies.slice(0, 8), ...series.slice(0, 6), ...docs.slice(0, 6)],
+          movies,
+          series,
+          docs,
+          new: recentlyAdded
+        };
 
-    const renderFilter = (key) => {
-      buttons.forEach((button) => button.classList.toggle("active", button.dataset.vodFilter === key));
-      focusTitle.textContent = labels[key];
-      focusGrid.innerHTML = filterGroups[key].map((item) => ContentCard(item)).join("");
-      rows.forEach((row) => {
-        row.hidden = key !== "all" && row.dataset.vodRow !== key;
-      });
-    };
+        const labels = {
+          all: "All On Demand",
+          movies: "Movies",
+          series: "Series & Episodes",
+          docs: "Documentaries & Science",
+          new: "Recently Added"
+        };
 
-    buttons.forEach((button) => {
-      button.addEventListener("click", () => renderFilter(button.dataset.vodFilter));
-    });
+        const renderCards = (items) => items.length ? items.map((item) => ContentCard(item)).join("") : `<div class="empty-state">No catalog titles available.</div>`;
+        const renderFilter = (key) => {
+          buttons.forEach((button) => button.classList.toggle("active", button.dataset.vodFilter === key));
+          focusTitle.textContent = labels[key];
+          focusGrid.innerHTML = renderCards(filterGroups[key]);
+          rows.forEach((row) => {
+            row.hidden = key !== "all" && row.dataset.vodRow !== key;
+          });
+        };
 
-    renderFilter("all");
+        buttons.forEach((button) => {
+          button.addEventListener("click", () => renderFilter(button.dataset.vodFilter));
+        });
+
+        const continueMount = document.querySelector("[data-vod-continue]");
+        if (continueMount) {
+          continueMount.innerHTML = history.length ? ContentRow("Continue Watching", history) : "";
+        }
+        document.querySelector("[data-vod-new]").innerHTML = recentlyAdded.length ? ContentRow("Recently Added", recentlyAdded) : "";
+        document.querySelector("[data-vod-movies]").innerHTML = movies.length ? ContentRow("Movies", movies) : "";
+        document.querySelector("[data-vod-series]").innerHTML = series.length ? ContentRow("Series & Episodes", series) : "";
+        document.querySelector("[data-vod-docs]").innerHTML = docs.length ? ContentRow("Documentaries & Science", docs) : "";
+
+        renderFilter("all");
+      } catch (error) {
+        focusTitle.textContent = "Catalog unavailable";
+        focusGrid.innerHTML = `<div class="empty-state">${error.message || "On-demand catalog could not be loaded."}</div>`;
+        rows.forEach((row) => {
+          row.innerHTML = "";
+        });
+      }
+    })();
   });
 
   return `
@@ -76,19 +98,16 @@ export function OnDemandPage() {
             <h2 data-vod-focus-title>All On Demand</h2>
           </div>
         </div>
-        <div class="content-grid vod-focus-grid" data-vod-focus-grid></div>
+        <div class="content-grid vod-focus-grid" data-vod-focus-grid><div class="empty-state">Loading real catalog...</div></div>
       </section>
 
-      ${history.length ? `<div data-vod-row="continue">${ContentRow("Continue Watching", history)}</div>` : ""}
+      <div data-vod-continue></div>
 
-      <section class="content-row" data-vod-row="new">
-        <div class="section-head"><h2>Recently Added</h2></div>
-        <div class="row-scroll">${recentlyAdded.map((item) => ContentCard(item)).join("")}</div>
-      </section>
+      <div data-vod-row="new" data-vod-new></div>
 
-      <div data-vod-row="movies">${ContentRow("Movies", movies)}</div>
-      <div data-vod-row="series">${ContentRow("Series & Episodes", series)}</div>
-      <div data-vod-row="docs">${ContentRow("Documentaries & Science", docs)}</div>
+      <div data-vod-row="movies" data-vod-movies></div>
+      <div data-vod-row="series" data-vod-series></div>
+      <div data-vod-row="docs" data-vod-docs></div>
     </main>
   `;
 }

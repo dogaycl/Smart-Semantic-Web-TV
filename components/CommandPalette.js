@@ -1,9 +1,10 @@
-import { content } from "../data/mockData.js";
+import { api } from "../services/api.js";
 
 const destinations = [
   { label: "Home", path: "/", type: "Page" },
   { label: "Live TV", path: "/live-tv", type: "Page" },
   { label: "Discover", path: "/discover", type: "AI Search" },
+  { label: "AI Planner", path: "/ai", type: "AI Tool" },
   { label: "My List", path: "/my-list", type: "Library" },
   { label: "Profiles", path: "/profiles", type: "Account" },
   { label: "Stats", path: "/stats", type: "Analytics" },
@@ -11,14 +12,17 @@ const destinations = [
   { label: "Admin", path: "/admin", type: "Management" }
 ];
 
-export const commandItems = [
-  ...destinations,
-  ...content.map((item) => ({
-    label: item.title,
-    path: `/content/${item.id}`,
-    type: `${item.category} • IMDb ${item.imdb || "N/A"}`
-  }))
-];
+export async function getCommandItems() {
+  const catalogItems = await api.getAllCatalog().catch(() => []);
+  return [
+    ...destinations,
+    ...catalogItems.map((item) => ({
+      label: item.title,
+      path: `/content/${item.id}`,
+      type: `${item.category} • ${item.primaryGenre}`
+    }))
+  ];
+}
 
 export function CommandPalette() {
   return `

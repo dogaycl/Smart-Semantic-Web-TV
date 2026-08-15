@@ -4,18 +4,9 @@ const COMMENTS_KEY = "vynex.comments";
 const PROFILE_KEY = "vynex.active-profile";
 const AI_PREFS_KEY = "vynex.ai-preferences";
 
-const defaultHistory = [
-  { contentId: "dune-part-two", progress: 68, watchedAt: "Today", device: "Web TV" },
-  { contentId: "stranger-things", progress: 42, watchedAt: "Yesterday", device: "Tablet" },
-  { contentId: "interstellar", progress: 100, watchedAt: "This week", device: "Living Room" }
-];
+const defaultHistory = [];
 
-const defaultComments = {
-  "dune-part-two": [
-    { author: "Ece", text: "The visual world is incredible, and the second half is very strong.", spoiler: false, likes: 12 },
-    { author: "Mert", text: "The final scene connects beautifully with the book.", spoiler: true, likes: 5 }
-  ]
-};
+const defaultComments = {};
 
 function read(key, fallback) {
   const value = localStorage.getItem(key);
@@ -28,7 +19,7 @@ function write(key, value) {
 }
 
 export function getRatings() {
-  return read(RATINGS_KEY, { "dune-part-two": 5, interstellar: 5, "black-mirror": 4 });
+  return read(RATINGS_KEY, {});
 }
 
 export function rateContent(contentId, rating) {

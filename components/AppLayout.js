@@ -2,7 +2,7 @@ import { getCurrentUser, logout } from "../contexts/authContext.js";
 import { Sidebar } from "./Sidebar.js";
 import { Topbar } from "./Topbar.js";
 import { AIAssistant } from "./AIAssistant.js";
-import { CommandPalette, commandItems } from "./CommandPalette.js";
+import { CommandPalette, getCommandItems } from "./CommandPalette.js";
 
 export function AppLayout(content) {
   const user = getCurrentUser();
@@ -69,8 +69,9 @@ export function AppLayout(content) {
     const palette = document.querySelector("[data-command-palette]");
     const commandInput = document.querySelector("[data-command-input]");
     const commandResults = document.querySelector("[data-command-results]");
-    const renderCommands = (query = "") => {
+    const renderCommands = async (query = "") => {
       const normalized = query.toLowerCase();
+      const commandItems = await getCommandItems();
       const matches = commandItems
         .filter((item) => `${item.label} ${item.type}`.toLowerCase().includes(normalized))
         .slice(0, 8);

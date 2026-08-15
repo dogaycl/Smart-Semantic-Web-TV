@@ -12,6 +12,7 @@ export function mediaBackground(item, key = "poster") {
 
 export function ContentCard(item, options = {}) {
   const tall = options.tall ? " tall" : "";
+  const href = item.routePath || `#/content/${item.id}`;
   queueMicrotask(() => {
     document.querySelectorAll(`[data-fav="${item.id}"]`).forEach((button) => {
       button.addEventListener("click", (event) => {
@@ -22,30 +23,38 @@ export function ContentCard(item, options = {}) {
         button.textContent = button.classList.contains("active") ? "★" : "☆";
       });
     });
+    if (item.liveChannelId) {
+      document.querySelectorAll(`[data-live-channel-id="${item.liveChannelId}"]`).forEach((element) => {
+        element.addEventListener("click", () => {
+          sessionStorage.setItem("synapse.live.channel-id", String(item.liveChannelId));
+        });
+      });
+    }
   });
 
   return `
-    <a class="content-card" href="#/content/${item.id}">
+    <a class="content-card" href="${href}"${item.liveChannelId ? ` data-live-channel-id="${item.liveChannelId}"` : ""}>
       <div class="poster${tall}" style="--poster:${mediaBackground(item, "poster")}">
         ${item.poster ? `<img class="poster-img" src="${item.poster}" alt="${item.title} poster" loading="lazy" />` : ""}
         <div class="poster-topline">
           <span class="badge">${item.category}</span>
-          ${item.relevance ? `<span class="relevance">${item.relevance}%</span>` : ""}
+          ${item.primaryGenre ? `<span class="relevance">${item.primaryGenre}</span>` : ""}
         </div>
         <div class="card-overlay">
           <strong>${item.title}</strong>
           <div class="overlay-actions">
-            <span class="imdb-badge">IMDb ${item.imdb || "N/A"}</span>
-            <span>${item.monthlyViews || "New"}</span>
+            <span class="imdb-badge">TMDB ${item.imdb || "N/A"}</span>
+            <span>${item.popularityValue != null ? `Popularity ${item.popularityValue}` : (item.status || "Catalog")}</span>
           </div>
           <span class="overlay-hint">Open details</span>
         </div>
       </div>
       <div class="card-body">
         <h3>${item.title}</h3>
+        ${item.recommendationReason ? `<p class="card-reason">${item.recommendationReason}</p>` : ""}
         <div class="card-footer">
-          <span class="content-meta">${item.duration} • ${item.year}</span>
-          <button class="favorite-button ${isFavorite(item.id) ? "active" : ""}" data-fav="${item.id}" title="Add to My List">${isFavorite(item.id) ? "★" : "☆"}</button>
+          <span class="content-meta">${item.duration}${item.year ? ` • ${item.year}` : ""}</span>
+          ${item.disableFavorite ? "" : `<button class="favorite-button ${isFavorite(item.id) ? "active" : ""}" data-fav="${item.id}" title="Add to My List">${isFavorite(item.id) ? "★" : "☆"}</button>`}
         </div>
       </div>
     </a>

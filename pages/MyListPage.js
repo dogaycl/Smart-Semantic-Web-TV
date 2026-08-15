@@ -1,24 +1,34 @@
-import { content } from "../data/mockData.js";
 import { getFavorites } from "../services/favoritesService.js";
 import { ContentCard } from "../components/ContentCard.js";
+import { api } from "../services/api.js";
 
 export function MyListPage() {
-  const render = () => {
-    const items = content.filter((item) => getFavorites().includes(item.id));
-    const mount = document.querySelector("#myListGrid");
-    if (!mount) return;
-    mount.innerHTML = items.length ? items.map((item) => ContentCard(item)).join("") : `<div class="empty-state">Your saved list is empty.</div>`;
-  };
   queueMicrotask(() => {
-    render();
-    document.addEventListener("favorites:changed", render, { once: true });
+    const render = async () => {
+      const mount = document.querySelector("#myListGrid");
+      if (!mount) return;
+      try {
+        const items = await api.getCatalogBySlugs(getFavorites());
+        mount.innerHTML = items.length ? items.map((item) => ContentCard(item)).join("") : `<div class="empty-state">Your saved list is empty.</div>`;
+      } catch (error) {
+        mount.innerHTML = `<div class="empty-state">${error.message || "Favorites could not be loaded."}</div>`;
+      }
+    };
+    const handleFavoritesChanged = () => {
+      void render();
+    };
+    void render();
+    document.addEventListener("favorites:changed", handleFavoritesChanged);
+    window.addEventListener("hashchange", () => {
+      document.removeEventListener("favorites:changed", handleFavoritesChanged);
+    }, { once: true });
   });
 
   return `
     <main class="page">
       <span class="eyebrow">Saved content</span>
       <h1 class="page-title">My List / Favorites</h1>
-      <section id="myListGrid" class="content-grid"></section>
+      <section id="myListGrid" class="content-grid"><div class="empty-state">Loading saved catalog items...</div></section>
     </main>
   `;
 }
