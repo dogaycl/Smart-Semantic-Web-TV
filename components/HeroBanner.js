@@ -1,5 +1,5 @@
 import { mediaBackground } from "./ContentCard.js";
-import { isFavorite } from "../services/favoritesService.js";
+import { isFavorite } from "../services/favoritesService.js?v=21";
 
 export function HeroBanner(item) {
   return `

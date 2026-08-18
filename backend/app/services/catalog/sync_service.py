@@ -61,6 +61,19 @@ class CatalogSyncService:
         db.commit()
         return self.repository.list_active(db=db)
 
+    def sync_payload(
+        self,
+        *,
+        db: Session,
+        payload: ExternalCatalogItemPayload,
+        synced_at: datetime | None = None,
+    ) -> CatalogItem:
+        return self._upsert_item(
+            db=db,
+            payload=payload,
+            synced_at=synced_at or datetime.now(timezone.utc),
+        )
+
     def _upsert_item(self, *, db: Session, payload: ExternalCatalogItemPayload, synced_at: datetime) -> CatalogItem:
         item = self.repository.get_by_tmdb(db=db, content_type=payload.content_type, tmdb_id=payload.tmdb_id)
         if item is None:

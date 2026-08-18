@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -12,8 +13,11 @@ from app.core.config import get_settings
 from app.models.search_document import SearchDocument
 from app.models.user import User
 from app.models.viewing_plan import ViewingPlan
+from app.repositories.catalog_repository import CatalogRepository
+from app.repositories.channel_repository import ChannelRepository
 from app.repositories.search_document_repository import SearchDocumentRepository
 from app.repositories.viewing_plan_repository import ViewingPlanRepository
+from app.repositories.watch_history_repository import WatchHistoryRepository
 from app.schemas.planner import (
     ViewingPlanChannelRead,
     ViewingPlanGenerateRequest,
@@ -31,6 +35,8 @@ from app.services.search.embeddings.gemini import GeminiEmbeddingService
 from app.services.search.index_service import SearchIndexService
 from app.services.search.query_parser import normalize_text, tokenize_text
 from app.services.search.service import cosine_similarity
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -81,12 +87,18 @@ class ViewingPlannerService:
         search_repository: SearchDocumentRepository | None = None,
         plan_repository: ViewingPlanRepository | None = None,
         index_service: SearchIndexService | None = None,
+        channel_repository: ChannelRepository | None = None,
+        catalog_repository: CatalogRepository | None = None,
+        watch_history_repository: WatchHistoryRepository | None = None,
     ) -> None:
         self.settings = get_settings()
         self.embedding_service = embedding_service or GeminiEmbeddingService()
         self.llm_service = llm_service or GeminiLLMService()
         self.search_repository = search_repository or SearchDocumentRepository()
         self.plan_repository = plan_repository or ViewingPlanRepository()
+        self.channel_repository = channel_repository or ChannelRepository()
+        self.catalog_repository = catalog_repository or CatalogRepository()
+        self.watch_history_repository = watch_history_repository or WatchHistoryRepository()
         self.recommendation_service = recommendation_service or RecommendationService(
             embedding_service=self.embedding_service,
             search_repository=self.search_repository,
@@ -114,6 +126,8 @@ class ViewingPlannerService:
             window_end=window.window_end,
         )
         candidates = self._select_candidates(
+            db=db,
+            user=user,
             payload=payload,
             window=window,
             profile=profile,
@@ -162,7 +176,19 @@ class ViewingPlannerService:
                     )
                 if not validation_errors:
                     plan_output = llm_response
-            except Exception:
+                else:
+                    logger.warning(
+                        "Gemini viewing plan still failed validation after one repair attempt for user %s: %s",
+                        user.id,
+                        validation_errors,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Gemini viewing plan generation failed for user %s, using deterministic fallback: %s",
+                    user.id,
+                    exc,
+                    exc_info=True,
+                )
                 plan_output = None
 
         if plan_output is None or validation_errors:
@@ -220,6 +246,8 @@ class ViewingPlannerService:
     def _select_candidates(
         self,
         *,
+        db: Session,
+        user: User,
         payload: ViewingPlanGenerateRequest,
         window: PlannerWindow,
         profile: UserTasteProfile,
@@ -232,11 +260,16 @@ class ViewingPlannerService:
             documents=documents,
         )
         category_hints = {normalize_text(item) for item in window.preferred_categories}
+        healthy_channel_ids = self._healthy_channel_ids(db=db)
+        playable_content_slugs = self._playable_content_slugs(db=db, documents=documents)
+        completed_content_slugs = self._completed_content_slugs(db=db, user=user)
 
         candidates: list[PlannerCandidate] = []
         for document in documents:
             if document.document_type == "epg":
                 if not payload.include_live:
+                    continue
+                if document.channel_id is not None and document.channel_id not in healthy_channel_ids:
                     continue
                 start = self._optional_datetime(document.availability_start)
                 end = self._optional_datetime(document.availability_end)
@@ -248,6 +281,10 @@ class ViewingPlannerService:
                 if not payload.include_vod:
                     continue
                 if not document.duration_minutes or document.duration_minutes > window.max_duration_minutes:
+                    continue
+                if document.content_slug and document.content_slug not in playable_content_slugs:
+                    continue
+                if document.content_slug and document.content_slug in completed_content_slugs:
                     continue
 
             category_score = self._category_hint_score(document=document, category_hints=category_hints)
@@ -288,6 +325,32 @@ class ViewingPlannerService:
         )
         return candidates[: self.settings.viewing_planner_candidate_limit]
 
+    def _healthy_channel_ids(self, *, db: Session) -> set[int]:
+        return {
+            channel.id
+            for channel in self.channel_repository.list_active(db=db)
+            if channel.stream_status == "healthy"
+        }
+
+    def _playable_content_slugs(self, *, db: Session, documents: list[SearchDocument]) -> set[str]:
+        slugs = {document.content_slug for document in documents if document.document_type != "epg" and document.content_slug}
+        if not slugs:
+            return set()
+        catalog_items = self.catalog_repository.list_catalog(db=db, slugs=list(slugs), limit=len(slugs))
+        return {
+            item.slug
+            for item in catalog_items
+            if any(source.is_active and source.last_error is None for source in item.playback_sources)
+        }
+
+    def _completed_content_slugs(self, *, db: Session, user: User) -> set[str]:
+        history = self.watch_history_repository.list_for_user(db=db, user_id=user.id)
+        return {
+            entry.content_id
+            for entry in history
+            if entry.is_completed and entry.content_type in (None, "content")
+        }
+
     def _request_scores(
         self,
         *,
@@ -300,10 +363,15 @@ class ViewingPlannerService:
         lexical_terms = set(tokenize_text(query))
         scores: dict[str, float] = {}
         if self.embedding_service.is_configured():
-            query_embedding = self.embedding_service.embed_query(query)
-            for document in documents:
-                if document.embedding and len(document.embedding) == len(query_embedding):
-                    scores[document.source_key] = cosine_similarity(query_embedding, document.embedding)
+            try:
+                query_embedding = self.embedding_service.embed_query(query)
+            except Exception as exc:
+                logger.warning("Gemini embedding query failed, scoring candidates lexically only: %s", exc)
+                query_embedding = None
+            if query_embedding is not None:
+                for document in documents:
+                    if document.embedding and len(document.embedding) == len(query_embedding):
+                        scores[document.source_key] = cosine_similarity(query_embedding, document.embedding)
 
         lexical_scores = self._lexical_scores(query_terms=lexical_terms, documents=documents)
         for source_key, lexical_score in lexical_scores.items():

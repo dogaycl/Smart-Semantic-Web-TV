@@ -18,7 +18,7 @@ export function Topbar(user) {
           <a class="${active(["/live-tv"])}" href="#/live-tv">Live TV</a>
           <a class="${active(["/on-demand", "/movies", "/series"])}" href="#/on-demand">On Demand</a>
           <a class="${active(["/discover"])}" href="#/discover">Discover</a>
-          <a class="${active(["/ai"])}" href="#/ai">AI Hub</a>
+          <a class="${active(["/ai", "/my-channel"])}" href="#/my-channel">My Channel</a>
         </nav>
         <div class="toolbar">
           <button class="command-trigger" data-command-open><span>⌘</span> Search</button>

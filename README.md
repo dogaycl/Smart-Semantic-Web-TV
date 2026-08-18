@@ -2,25 +2,109 @@
 
 Smart Semantic Web TV Platform demo for CENG384 Project III.
 
-## Run
+The repository now contains a real FastAPI backend plus a hash-routed frontend prototype. The current implementation includes:
 
-Open `index.html` directly in a browser.
+- real user authentication
+- real Turkish and English live TV and EPG integration
+- real TMDB-backed movie and series metadata
+- favorites and watch history
+- semantic search and recommendations
+- "My Channel": a Gemini-backed personalized live + on-demand planner, and a grounded assistant
+- legal in-app playback for a curated subset of content
+- Watch Party rooms with synchronized playback and room chat
 
-For a local server:
+## Local Development
+
+### Backend
+
+The backend lives under `backend/` and expects environment configuration from `.env`.
+
+Typical development flow:
 
 ```bash
-python -m http.server 5500
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then visit `http://localhost:5500`.
+Swagger / OpenAPI:
 
-## Included Modules
+- `http://127.0.0.1:8000/docs`
 
-- Hash-based frontend routes: `/login`, `/register`, `/`, `/live-tv`, `/movies`, `/series`, `/discover`, `/content/:id`, `/my-list`, `/profile`
-- Mock authentication with protected routes and logout
-- Reusable layout, sidebar, topbar, content cards, hero, filters, video player, channel list, and EPG guide
-- Mock data and API service abstraction under `data/` and `services/`
-- Netflix-style home screen and Plex-style Live TV screen
-- Semantic discovery UI prepared for a future AI/search backend
-- PWA manifest and service worker
-- PWA manifest and service worker
+### Frontend
+
+Use a local web server instead of opening `index.html` with `file://`, because invite links, backend API calls, and Watch Party WebSockets are designed for a normal HTTP origin.
+
+```bash
+python3 -m http.server 5500
+```
+
+Open:
+
+- `http://127.0.0.1:5500/#/login`
+
+### Backend / Frontend URLs
+
+- Frontend: `http://127.0.0.1:5500/#/login`
+- Backend API: `http://127.0.0.1:8000`
+- Swagger: `http://127.0.0.1:8000/docs`
+
+## Environment Notes
+
+The backend reads secrets and connection values from environment variables. Keep real credentials local only.
+
+At minimum, local development may require values such as:
+
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `YOUTUBE_API_KEY`
+- `TMDB_API_KEY`
+- Gemini-related API settings used by the semantic, planner, and assistant phases
+
+Use `.env.example` as the safe reference template.
+
+## Watch Party Flow
+
+Current Watch Party entry points:
+
+- movie/series detail pages via `Watch Together`
+- the playback page via `Watch Together`
+- the Live TV page for playable live channels
+- direct invite routes such as `#/watch-party/AB12CD`
+
+Current MVP behavior:
+
+- the room creator is the host
+- the host controls shared play, pause, and seek
+- participants follow the host playback state
+- volume and fullscreen stay local to each participant
+- room chat is real-time and persisted for recent-history reloads
+
+## Testing
+
+Backend tests:
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest -q
+```
+
+Watch Party coverage includes:
+
+- room creation and join flows
+- authenticated WebSocket access
+- host-only playback control enforcement
+- sync-state responses
+- chat broadcast
+- invalid payload handling
+- host disconnect expiry
+
+## Project Notes
+
+- Backend architecture rules are documented in `AGENTS.md`.
+- Implementation planning and phase tracking live in `docs/BACKEND_PLAN.md`.
+- API response contracts live in `docs/API_CONTRACT.md`.

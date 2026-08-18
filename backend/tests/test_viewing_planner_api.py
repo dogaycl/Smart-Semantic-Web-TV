@@ -45,7 +45,7 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
     )
     token = _register_user(client)
 
@@ -58,14 +58,14 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
             plan=[
                 ViewingPlannerLLMItem(
                     candidate_id=f"epg:{channel.id}:{entry.source}:{entry.external_id}",
-                    planned_start=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
-                    planned_end=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
+                    planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
                     reason="Start with the live science bulletin.",
                 ),
                 ViewingPlannerLLMItem(
                     candidate_id="catalog:tech-frontiers",
-                    planned_start=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
-                    planned_end=datetime(2026, 8, 15, 22, 0, tzinfo=timezone.utc),
+                    planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc),
                     reason="Follow it with a technology documentary.",
                 ),
             ],
@@ -81,7 +81,7 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
     monkeypatch.setattr(viewing_plans_router, "viewing_planner_service", custom_service)
 
     payload = {
-        "plan_date": str(date(2026, 8, 15)),
+        "plan_date": str(date(2026, 8, 17)),
         "available_start": str(time(19, 0)),
         "available_end": str(time(23, 0)),
         "timezone": "UTC",

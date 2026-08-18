@@ -4,7 +4,7 @@ const destinations = [
   { label: "Home", path: "/", type: "Page" },
   { label: "Live TV", path: "/live-tv", type: "Page" },
   { label: "Discover", path: "/discover", type: "AI Search" },
-  { label: "AI Planner", path: "/ai", type: "AI Tool" },
+  { label: "My Channel", path: "/my-channel", type: "AI Tool" },
   { label: "My List", path: "/my-list", type: "Library" },
   { label: "Profiles", path: "/profiles", type: "Account" },
   { label: "Stats", path: "/stats", type: "Analytics" },

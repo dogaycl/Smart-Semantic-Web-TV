@@ -1,6 +1,6 @@
-import { getFavorites } from "../services/favoritesService.js";
-import { ContentCard } from "../components/ContentCard.js";
-import { api } from "../services/api.js";
+import { ensureFavoritesLoaded } from "../services/favoritesService.js?v=21";
+import { ContentCard } from "../components/ContentCard.js?v=21";
+import { api } from "../services/api.js?v=26";
 
 export function MyListPage() {
   queueMicrotask(() => {
@@ -8,7 +8,8 @@ export function MyListPage() {
       const mount = document.querySelector("#myListGrid");
       if (!mount) return;
       try {
-        const items = await api.getCatalogBySlugs(getFavorites());
+        const favorites = await ensureFavoritesLoaded();
+        const items = await api.getCatalogBySlugs(favorites);
         mount.innerHTML = items.length ? items.map((item) => ContentCard(item)).join("") : `<div class="empty-state">Your saved list is empty.</div>`;
       } catch (error) {
         mount.innerHTML = `<div class="empty-state">${error.message || "Favorites could not be loaded."}</div>`;

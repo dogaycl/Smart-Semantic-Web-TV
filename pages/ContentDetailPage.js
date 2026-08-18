@@ -1,42 +1,91 @@
-import { api } from "../services/api.js";
-import { ContentCard, mediaBackground } from "../components/ContentCard.js";
-import { isFavorite, toggleFavorite } from "../services/favoritesService.js";
-import { addComment, addHistory, getComments, getRatings, likeComment, rateContent } from "../services/userDataService.js";
+import { api } from "../services/api.js?v=26";
+import { ContentCard, mediaBackground } from "../components/ContentCard.js?v=21";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
+import { addComment, getComments, getRatings, likeComment, rateContent } from "../services/userDataService.js";
+import { startCatalogWatchParty } from "./WatchPartyPage.js";
 
 export function ContentDetailPage(id) {
   queueMicrotask(async () => {
     const mount = document.querySelector("#detailMount");
 
     try {
-      const item = await api.getContentById(id);
+      const [item, playback] = await Promise.all([
+        api.getContentById(id),
+        api.getContentPlayback(id)
+      ]);
       if (!item) {
         mount.innerHTML = emptyState("Catalog item not found.");
         return;
       }
 
-      mount.innerHTML = detail(item);
+      mount.innerHTML = detail(item, playback);
+      const assistantContext = mount.querySelector("[data-assistant-context]");
+      assistantContext?.setAttribute("data-context-type", "catalog");
+      assistantContext?.setAttribute("data-content-slug", item.slug);
+      assistantContext?.setAttribute("data-context-label", item.title);
+      document.dispatchEvent(new CustomEvent("assistant:context-changed"));
       document.querySelector("#related").innerHTML = item.relatedItems.length
         ? item.relatedItems.map((entry) => ContentCard(entry)).join("")
         : `<div class="empty-state">No related titles found.</div>`;
 
+      const setDetailTab = (tabName) => {
+        document.querySelectorAll("[data-detail-tab]").forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.detailTab === tabName);
+        });
+        document.querySelectorAll("[data-detail-panel]").forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.detailPanel === tabName);
+        });
+      };
+
       document.querySelectorAll("[data-detail-tab]").forEach((button) => {
         button.addEventListener("click", () => {
-          document.querySelectorAll("[data-detail-tab]").forEach((tab) => tab.classList.remove("active"));
-          document.querySelectorAll("[data-detail-panel]").forEach((panel) => panel.classList.remove("active"));
-          button.classList.add("active");
-          document.querySelector(`[data-detail-panel="${button.dataset.detailTab}"]`)?.classList.add("active");
+          setDetailTab(button.dataset.detailTab);
         });
       });
 
       document.querySelector("[data-watch-now]")?.addEventListener("click", () => {
-        addHistory(item.id, 8);
-        document.querySelector("[data-watch-status]").textContent = "Added to watch history. Continue Watching updated.";
+        const statusMount = document.querySelector("[data-watch-status]");
+        if (playback.watchAction === "watch_now") {
+          location.hash = `/watch/${item.slug}`;
+          return;
+        }
+        if (playback.watchAction === "watch_trailer") {
+          setDetailTab("trailer");
+          statusMount.textContent = playback.message || "Playing trailer instead because no legal full source is currently configured.";
+          return;
+        }
+        statusMount.textContent = playback.message || "This title is not currently available for in-app playback.";
       });
 
-      document.querySelector("[data-detail-favorite]")?.addEventListener("click", (event) => {
+      document.querySelector("[data-watch-together]")?.addEventListener("click", async () => {
+        const button = document.querySelector("[data-watch-together]");
+        const statusMount = document.querySelector("[data-watch-status]");
+        if (playback.watchAction !== "watch_now") {
+          statusMount.textContent = "Only titles with a real playable source can start a watch room.";
+          return;
+        }
+        button.disabled = true;
+        statusMount.textContent = "Creating a watch room...";
+        try {
+          await startCatalogWatchParty(item.slug);
+        } catch (error) {
+          statusMount.textContent = error.message || "The watch room could not be created.";
+          button.disabled = false;
+        }
+      });
+
+      document.querySelector("[data-detail-favorite]")?.addEventListener("click", async (event) => {
         event.preventDefault();
-        toggleFavorite(item.id);
-        event.currentTarget.classList.toggle("active");
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          const favorites = await toggleFavorite(item.id);
+          button.classList.toggle("active", favorites.includes(String(item.id)));
+        } catch {
+          button.classList.toggle("active", isFavorite(item.id));
+        } finally {
+          button.disabled = false;
+        }
       });
 
       document.querySelectorAll("[data-user-rating]").forEach((button) => {
@@ -93,9 +142,19 @@ function emptyState(message) {
   return `<section class="story-shell"><div class="empty-state">${message}</div></section>`;
 }
 
-function detail(item) {
+function detail(item, playback) {
   const userRating = getRatings()[item.id] || 0;
   const genres = item.genres.length ? item.genres.join(", ") : item.primaryGenre;
+  const watchButtonLabel = playback.watchAction === "watch_now"
+    ? (playback.watchProgress?.watchPositionSeconds ? "Resume Watching" : "Watch Now")
+    : playback.watchAction === "watch_trailer"
+      ? "Watch Trailer"
+      : "Not Available";
+  const watchStatus = playback.watchAction === "watch_now"
+    ? (playback.watchProgress?.watchPositionSeconds
+      ? `Resume is available at ${Math.floor(playback.watchProgress.watchPositionSeconds / 60)} min. ${playback.message}`
+      : playback.message)
+    : playback.message;
   const trailerMarkup = item.trailer?.embedUrl
     ? `<iframe class="trailer-embed" src="${item.trailer.embedUrl}" title="${item.title} trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`
     : `<div class="trailer-frame"><span>▶</span><strong>No official trailer available</strong><small>TMDB did not return an embeddable trailer for this title.</small></div>`;
@@ -122,12 +181,14 @@ function detail(item) {
           ${item.imdb ? `<span class="imdb-badge large">TMDB ${item.imdb}</span>` : ""}
           ${item.popularityValue != null ? `<span>Popularity ${item.popularityValue}</span>` : ""}
           ${item.status ? `<span>${item.status}</span>` : ""}
+          ${playback.primarySource ? `<span>${playback.primarySource.type.toUpperCase()} via ${playback.primarySource.providerName || "configured source"}</span>` : ""}
         </div>
         <div class="detail-actions">
-          <button class="primary-button" data-watch-now>Watch</button>
+          <button class="primary-button" data-watch-now>${watchButtonLabel}</button>
+          <button class="ghost-button" data-watch-together ${playback.watchAction !== "watch_now" ? "disabled" : ""}>Watch Together</button>
           <button class="ghost-button ${isFavorite(item.id) ? "active" : ""}" data-detail-favorite>Add to Favorites / My List</button>
         </div>
-        <p class="muted" data-watch-status></p>
+        <p class="muted" data-watch-status>${watchStatus}</p>
       </div>
     </section>
     <section class="story-shell">
@@ -144,6 +205,7 @@ function detail(item) {
         <h2>About ${item.title}</h2>
         <p>${item.description}</p>
       </div>
+      <div hidden data-assistant-context></div>
       <div class="story-panel" data-detail-panel="cast">
         <span class="eyebrow">Metadata</span>
         <h2>Credits and Details</h2>
@@ -187,13 +249,18 @@ function detail(item) {
         ${seasonMarkup}
       </div>
       <div class="story-panel" data-detail-panel="ai">
-        <span class="eyebrow">Future AI Conversational Assistant</span>
-        <h2>AI is not connected for this title yet</h2>
-        <p>The AI planner and conversational explanation layer will be implemented in a later phase. This page already uses real catalog metadata from TMDB.</p>
+        <span class="eyebrow">Grounded content assistant</span>
+        <h2>Ask AI about ${item.title}</h2>
+        <p>Vynex can now answer from trusted catalog metadata for this title. It will not invent scene-level details when that context is unavailable.</p>
         <div class="ai-detail-grid">
-          <div><strong>Available today</strong><span>Real title metadata, images, genres, seasons, and trailers.</span></div>
-          <div><strong>Planned later</strong><span>Semantic explanation, recommendation reasoning, and viewing planner logic.</span></div>
+          <div><strong>Available today</strong><span>Real title metadata, credits, genres, season data, and related catalog context.</span></div>
+          <div><strong>Grounding rule</strong><span>Answers stay limited to trusted backend context instead of acting like a generic chatbot.</span></div>
           <div><strong>Metadata source</strong><span>${item.attribution?.source || "TMDB"}</span></div>
+        </div>
+        <div class="ai-suggestions">
+          <button data-ai-prompt="What is this title about?">What is this about?</button>
+          <button data-ai-prompt="Who are the main cast and crew for this title?">Cast and crew</button>
+          <button data-ai-prompt="Why might this title fit my saved interests?">Why it fits me</button>
         </div>
       </div>
       <div class="story-panel" data-detail-panel="rating">

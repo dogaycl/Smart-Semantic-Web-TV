@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import logging
 
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.db.types import configure_pgvector_support
 from app.models.catalog_item import CatalogItem
 from app.models.channel import Channel
 from app.models.epg_entry import EPGEntry
@@ -17,6 +19,8 @@ from app.repositories.search_document_repository import SearchDocumentRepository
 from app.services.catalog.service import CatalogService
 from app.services.search.embeddings.base import EmbeddingService
 from app.services.search.embeddings.gemini import GeminiEmbeddingService
+
+logger = logging.getLogger(__name__)
 
 
 class SearchIndexService:
@@ -43,6 +47,7 @@ class SearchIndexService:
         return self.embedding_service.is_configured()
 
     def sync_documents(self, *, db: Session) -> list[SearchDocument]:
+        configure_pgvector_support(db.get_bind())
         now = datetime.now(timezone.utc)
         existing = {document.source_key: document for document in self.search_repository.list_all(db=db)}
         active_source_keys: set[str] = set()
@@ -90,7 +95,15 @@ class SearchIndexService:
 
         if self.embedding_service.is_configured():
             for document, title, text in documents_to_embed:
-                embedding = self.embedding_service.embed_document(title=title, text=text)
+                try:
+                    embedding = self.embedding_service.embed_document(title=title, text=text)
+                except Exception as exc:
+                    logger.warning(
+                        "Gemini embedding failed for search document %s, leaving it unembedded: %s",
+                        document.source_key,
+                        exc,
+                    )
+                    continue
                 document.embedding = embedding
                 document.embedding_model = self.settings.gemini_embedding_model
                 document.embedding_dimensions = self.settings.gemini_embedding_dimensions

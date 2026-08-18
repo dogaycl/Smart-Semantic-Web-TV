@@ -7,6 +7,10 @@ from app.models.epg_entry import EPGEntry
 
 
 class EPGEntryRepository:
+    def get_by_id(self, *, db: Session, entry_id: int) -> EPGEntry | None:
+        statement = select(EPGEntry).where(EPGEntry.id == entry_id)
+        return db.scalar(statement)
+
     def list_for_window(
         self,
         *,

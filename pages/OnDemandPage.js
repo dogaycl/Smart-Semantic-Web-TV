@@ -1,6 +1,5 @@
 import { ContentRow } from "../components/ContentRow.js";
 import { ContentCard } from "../components/ContentCard.js";
-import { getWatchHistory } from "../services/userDataService.js";
 import { api } from "../services/api.js";
 
 function sortByReleaseDate(items) {
@@ -17,8 +16,12 @@ export function OnDemandPage() {
 
       try {
         const allItems = await api.getAllCatalog();
-        const historyEntries = getWatchHistory();
-        const history = await api.getCatalogBySlugs(historyEntries.map((entry) => entry.contentId));
+        const historyEntries = await api.getMyWatchHistory();
+        const history = await api.getCatalogBySlugs(
+          historyEntries
+            .filter((entry) => entry.contentType === "content")
+            .map((entry) => entry.contentId)
+        );
         const movies = allItems.filter((item) => item.contentType === "movie");
         const series = allItems.filter((item) => item.contentType === "tv");
         const docs = allItems.filter((item) => item.genres.includes("Documentary") || item.genres.includes("Science Fiction") || item.genres.includes("Sci-Fi & Fantasy"));

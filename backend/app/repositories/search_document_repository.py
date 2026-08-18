@@ -5,11 +5,23 @@ import math
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.db.types import vector_literal
+from app.db.types import configure_pgvector_support, pgvector_supported, vector_literal
 from app.models.search_document import SearchDocument
 
 
 class SearchDocumentRepository:
+    def get_by_source_key(self, *, db: Session, source_key: str) -> SearchDocument | None:
+        statement = select(SearchDocument).where(SearchDocument.source_key == source_key)
+        return db.scalar(statement)
+
+    def get_by_catalog_item_id(self, *, db: Session, catalog_item_id: int) -> SearchDocument | None:
+        statement = select(SearchDocument).where(SearchDocument.catalog_item_id == catalog_item_id)
+        return db.scalar(statement)
+
+    def get_by_epg_entry_id(self, *, db: Session, epg_entry_id: int) -> SearchDocument | None:
+        statement = select(SearchDocument).where(SearchDocument.epg_entry_id == epg_entry_id)
+        return db.scalar(statement)
+
     def list_all(self, *, db: Session) -> list[SearchDocument]:
         statement = select(SearchDocument).order_by(SearchDocument.id.asc())
         return list(db.scalars(statement).all())
@@ -39,7 +51,8 @@ class SearchDocumentRepository:
         limit: int,
     ) -> list[tuple[SearchDocument, float]]:
         bind = db.get_bind()
-        if bind is None or bind.dialect.name != "postgresql":
+        configure_pgvector_support(bind)
+        if bind is None or not pgvector_supported(bind.dialect):
             documents = [
                 document
                 for document in self.list_active(db=db)

@@ -10,15 +10,9 @@ from app.repositories.user_repository import UserRepository
 http_bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
-    db: Session = Depends(get_db),
-):
-    if credentials is None:
-        return None
-
+def get_user_from_token(token: str, *, db: Session):
     try:
-        payload = decode_access_token(credentials.credentials)
+        payload = decode_access_token(token)
     except PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -54,13 +48,28 @@ def get_current_user_optional(
     return user
 
 
-def get_current_user(
-    current_user=Depends(get_current_user_optional),
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    db: Session = Depends(get_db),
 ):
-    if current_user is None:
+    if credentials is None:
+        return None
+    try:
+        return get_user_from_token(credentials.credentials, db=db)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    db: Session = Depends(get_db),
+):
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication credentials were not provided.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return current_user
+    return get_user_from_token(credentials.credentials, db=db)

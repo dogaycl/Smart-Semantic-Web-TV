@@ -63,3 +63,7 @@ class Channel(Base):
         back_populates="channel",
         cascade="all, delete-orphan",
     )
+    watch_rooms = relationship(
+        "WatchRoom",
+        back_populates="channel",
+    )

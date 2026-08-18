@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.catalog_genre import CatalogGenre
 from app.models.catalog_item import CatalogItem
+from app.models.playback_source import PlaybackSource
 
 
 CATALOG_EAGER_LOADS = (
     selectinload(CatalogItem.genres),
     selectinload(CatalogItem.seasons),
     selectinload(CatalogItem.videos),
+    selectinload(CatalogItem.playback_sources),
 )
 
 
@@ -86,15 +88,20 @@ class CatalogRepository:
         related: list[CatalogItem] = []
 
         if genre_names:
-            statement = (
-                select(CatalogItem)
+            related_ids = (
+                select(CatalogItem.id)
                 .join(CatalogItem.genres)
-                .options(*CATALOG_EAGER_LOADS)
                 .where(CatalogItem.is_active.is_(True))
                 .where(CatalogItem.id != item.id)
                 .where(CatalogItem.content_type == item.content_type)
                 .where(CatalogGenre.name.in_(genre_names))
                 .distinct()
+                .subquery()
+            )
+            statement = (
+                select(CatalogItem)
+                .options(*CATALOG_EAGER_LOADS)
+                .where(CatalogItem.id.in_(select(related_ids.c.id)))
                 .order_by(CatalogItem.vote_average.desc(), CatalogItem.popularity.desc(), CatalogItem.title.asc())
                 .limit(limit)
             )
@@ -126,6 +133,40 @@ class CatalogRepository:
         )
         return list(db.scalars(statement).all())
 
+    def find_by_title_and_year(
+        self,
+        *,
+        db: Session,
+        title_variants: list[str],
+        release_year: int | None,
+        content_type: str,
+    ) -> CatalogItem | None:
+        normalized = [value.strip().lower() for value in title_variants if value.strip()]
+        if not normalized:
+            return None
+
+        statement = (
+            select(CatalogItem)
+            .options(*CATALOG_EAGER_LOADS)
+            .where(CatalogItem.is_active.is_(True))
+            .where(CatalogItem.content_type == content_type)
+            .where(
+                or_(
+                    func.lower(CatalogItem.title).in_(normalized),
+                    func.lower(CatalogItem.original_title).in_(normalized),
+                )
+            )
+            .order_by(CatalogItem.release_date.desc(), CatalogItem.id.desc())
+        )
+        candidates = list(db.scalars(statement).all())
+        if release_year is None:
+            return candidates[0] if candidates else None
+
+        for item in candidates:
+            if item.release_date and item.release_date.year == release_year:
+                return item
+        return candidates[0] if candidates else None
+
     def create(self, **kwargs) -> CatalogItem:
         return CatalogItem(**kwargs)
 
@@ -155,7 +196,12 @@ class CatalogRepository:
             )
 
         if genre_names:
-            statement = statement.join(CatalogItem.genres).where(CatalogGenre.name.in_(genre_names)).distinct()
+            matching_ids = (
+                select(CatalogGenre.content_item_id)
+                .where(CatalogGenre.name.in_(genre_names))
+                .distinct()
+            )
+            statement = statement.where(CatalogItem.id.in_(matching_ids))
 
         return statement
 

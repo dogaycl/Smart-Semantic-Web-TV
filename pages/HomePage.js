@@ -1,8 +1,8 @@
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=26";
 import { HeroBanner } from "../components/HeroBanner.js";
 import { ContentRow } from "../components/ContentRow.js";
-import { ContentCard } from "../components/ContentCard.js";
-import { toggleFavorite } from "../services/favoritesService.js";
+import { ContentCard } from "../components/ContentCard.js?v=21";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
 import { getActiveProfile, getAiPreferences } from "../services/userDataService.js";
 
 export function HomePage() {
@@ -41,11 +41,19 @@ export function HomePage() {
         ? visibleRows.map(([title, items]) => ContentRow(title, items)).join("")
         : `<div class="empty-state">No real catalog shelves are available yet.</div>`;
 
-      document.querySelector("[data-hero-favorite]")?.addEventListener("click", (event) => {
+      document.querySelector("[data-hero-favorite]")?.addEventListener("click", async (event) => {
         event.preventDefault();
         const contentId = event.currentTarget.dataset.heroFavorite;
-        toggleFavorite(contentId);
-        event.currentTarget.classList.toggle("active");
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          const favorites = await toggleFavorite(contentId);
+          button.classList.toggle("active", favorites.includes(String(contentId)));
+        } catch {
+          button.classList.toggle("active", isFavorite(contentId));
+        } finally {
+          button.disabled = false;
+        }
       });
     } catch (error) {
       heroMount.innerHTML = `<div class="empty-state">${error.message || "Catalog could not be loaded."}</div>`;

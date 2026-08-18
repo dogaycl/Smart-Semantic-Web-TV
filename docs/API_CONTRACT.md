@@ -278,6 +278,24 @@ Errors:
 
 Phase 4 exposes real live channel metadata, playback instructions, and normalized EPG windows. All date-time query parameters and response timestamps use timezone-aware ISO 8601 values.
 
+Phase 9 refines the default Live TV contract for the demo experience; Phase 12 expands it to a curated bilingual (Turkish + English) catalog:
+
+- the default `GET /api/channels` catalog is curated across Turkish and English public channels
+- inactive legacy or non-demo records are excluded instead of deleted
+- frontend clients should treat missing guide data as `Schedule unavailable`, not as a signal to synthesize mock EPG rows
+- curated category labels currently used by the frontend are:
+  - `News`
+  - `Business`
+  - `Technology`
+  - `Entertainment`
+  - `Documentary`
+  - `Sports`
+  - `Education`
+  - `General TV`
+  - `Music`
+  - `Youth`
+- `GET /api/channels` accepts optional `category` and `language` query filters (Phase 12); omitting both returns every active channel, unchanged from Phase 9
+
 Playback contract:
 
 - `playback.type = "hls"` means the frontend should play `playback.stream_url`
@@ -290,6 +308,14 @@ Query parameters:
 
 - `start` optional ISO datetime used to resolve `current_program` and `next_program`
 - `end` optional ISO datetime used with `start` to warm the EPG window
+- `category` optional exact category label (e.g. `Music`, `Youth`, `News`); Phase 12
+- `language` optional exact language code (e.g. `tr`, `en`); Phase 12
+
+Response notes:
+
+- `language` is normalized to a frontend-friendly code such as `en` or `tr`
+- `stream_status = "healthy"` means the backend selected a currently reachable public candidate, but frontend playback should still show a visible unavailable/error state if the browser cannot render that stream
+- if both `current_program` and `next_program` are `null`, the frontend should render a schedule-unavailable state rather than fallback/mock programming
 
 Success response `200`:
 
@@ -426,6 +452,12 @@ Query parameters:
 - `slot_minutes` optional integer between `15` and `180`, default `60`
 
 If `start` and `end` are omitted, the backend returns a default 4-hour window.
+
+Response notes:
+
+- channels without verified guide data can still appear in the `channels` array with an empty `entries` list
+- when `entries` is empty for a channel or no entry overlaps a visible slot, the frontend should render `Schedule unavailable`
+- the backend never fabricates missing EPG rows
 
 Success response `200`:
 
@@ -770,6 +802,194 @@ Errors:
 
 - `404` catalog item not found
 
+## Phase 10 Endpoints
+
+Phase 10 adds real catalog playback over legally usable sources. TMDB remains metadata-only; full playback is available only when the backend has at least one active `PlaybackSource` for the requested catalog item.
+
+Playback behavior notes:
+
+- `watch_action = "watch_now"` means the frontend should initialize a real player using `primary_source`
+- `watch_action = "watch_trailer"` means no legal full playback source is configured, but an official trailer fallback is available
+- `watch_action = "not_available"` means the UI must show a clear unavailable state instead of a fake or broken Watch button
+- authenticated requests may include `watch_progress`; unauthenticated requests should treat it as `null`
+- source types currently normalized by the backend are:
+  - `hls`
+  - `mp4`
+  - `youtube`
+  - `external`
+
+### `GET /api/catalog/{slug}/playback`
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Notes:
+
+- the `Authorization` header is optional
+- when a valid token is present and the source supports progress reporting, the backend includes the user’s saved watch progress
+- the frontend should prefer `primary_source` for default playback and may surface the additional `sources` array as optional alternatives
+
+Success response `200`:
+
+```json
+{
+  "content_id": 1,
+  "slug": "movie-big-buck-bunny-10378",
+  "title": "Big Buck Bunny",
+  "playback_available": true,
+  "watch_action": "watch_now",
+  "message": "Legal playback is available for this title.",
+  "primary_source": {
+    "id": 10,
+    "name": "Open HLS Stream",
+    "type": "hls",
+    "playback_url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    "embed_url": null,
+    "external_video_id": null,
+    "quality": "auto",
+    "language": "en",
+    "is_primary": true,
+    "provider_name": "Mux Test Streams",
+    "provider_url": "https://test-streams.mux.dev/",
+    "license_note": "Open Big Buck Bunny sample stream used for browser HLS playback testing.",
+    "source_note": "Curated demo HLS source for legal playback validation.",
+    "last_checked_at": "2026-08-17T08:10:00Z",
+    "error": null,
+    "capabilities": {
+      "can_play": true,
+      "can_pause": true,
+      "can_seek": true,
+      "can_report_progress": true,
+      "can_fullscreen": true,
+      "supports_seek": true,
+      "supports_state_tracking": true
+    }
+  },
+  "sources": [
+    {
+      "id": 10,
+      "name": "Open HLS Stream",
+      "type": "hls",
+      "playback_url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+      "embed_url": null,
+      "external_video_id": null,
+      "quality": "auto",
+      "language": "en",
+      "is_primary": true,
+      "provider_name": "Mux Test Streams",
+      "provider_url": "https://test-streams.mux.dev/",
+      "license_note": "Open Big Buck Bunny sample stream used for browser HLS playback testing.",
+      "source_note": "Curated demo HLS source for legal playback validation.",
+      "last_checked_at": "2026-08-17T08:10:00Z",
+      "error": null,
+      "capabilities": {
+        "can_play": true,
+        "can_pause": true,
+        "can_seek": true,
+        "can_report_progress": true,
+        "can_fullscreen": true,
+        "supports_seek": true,
+        "supports_state_tracking": true
+      }
+    },
+    {
+      "id": 11,
+      "name": "Open MP4 File",
+      "type": "mp4",
+      "playback_url": "https://example.com/big-buck-bunny.mp4",
+      "embed_url": null,
+      "external_video_id": null,
+      "quality": "2160p",
+      "language": "en",
+      "is_primary": false,
+      "provider_name": "Microsoft PlayReady Test Content",
+      "provider_url": "https://learn.microsoft.com/playready/advanced/testcontent/playready-3x-test-content",
+      "license_note": "Public Big Buck Bunny MP4 test asset documented by Microsoft.",
+      "source_note": "Alternative HTML5 MP4 playback source for the demo.",
+      "last_checked_at": "2026-08-17T08:10:00Z",
+      "error": null,
+      "capabilities": {
+        "can_play": true,
+        "can_pause": true,
+        "can_seek": true,
+        "can_report_progress": true,
+        "can_fullscreen": true,
+        "supports_seek": true,
+        "supports_state_tracking": true
+      }
+    }
+  ],
+  "trailer": null,
+  "fallback": null,
+  "watch_progress": {
+    "watch_position_seconds": 84,
+    "total_watched_duration_seconds": 120,
+    "is_completed": false,
+    "last_watched_at": "2026-08-17T08:20:00Z"
+  }
+}
+```
+
+Trailer-fallback response example:
+
+```json
+{
+  "content_id": 22,
+  "slug": "movie-arrival-329865",
+  "title": "Arrival",
+  "playback_available": false,
+  "watch_action": "watch_trailer",
+  "message": "A legal full playback source is not configured, but an official trailer is available.",
+  "primary_source": null,
+  "sources": [],
+  "trailer": {
+    "name": "Official Trailer",
+    "site": "YouTube",
+    "type": "Trailer",
+    "official": true,
+    "published_at": "2026-08-17T08:00:00Z",
+    "embed_url": "https://www.youtube.com/embed/arrivalkey"
+  },
+  "fallback": {
+    "type": "watch_trailer",
+    "label": "Watch Trailer",
+    "message": "Official trailer playback is available for this title.",
+    "embed_url": "https://www.youtube.com/embed/arrivalkey"
+  },
+  "watch_progress": null
+}
+```
+
+Unavailable response example:
+
+```json
+{
+  "content_id": 42,
+  "slug": "movie-dune-part-two-693134",
+  "title": "Dune: Part Two",
+  "playback_available": false,
+  "watch_action": "not_available",
+  "message": "This title is not currently available for in-app playback.",
+  "primary_source": null,
+  "sources": [],
+  "trailer": null,
+  "fallback": {
+    "type": "not_available",
+    "label": "Not Available for Playback",
+    "message": "No legal full playback source is currently configured for this title.",
+    "embed_url": null
+  },
+  "watch_progress": null
+}
+```
+
+Errors:
+
+- `404` catalog item not found
+
 ## Phase 6 Endpoints
 
 Phase 6 adds semantic search and personalized recommendations over real catalog and upcoming live EPG data. Both endpoints return real existing content only; no fictional items are generated.
@@ -981,7 +1201,7 @@ Request:
 
 ```json
 {
-  "plan_date": "2026-08-15",
+  "plan_date": "2026-08-17",
   "available_start": "19:00:00",
   "available_end": "23:00:00",
   "timezone": "Europe/Istanbul",
@@ -995,7 +1215,7 @@ Request:
 
 Notes:
 
-- `plan_date` cannot be in the past. For example, because the current date is `2026-08-15`, a date like `2026-08-14` is invalid.
+- `plan_date` cannot be in the past. Because the current date is `2026-08-16`, a date like `2026-08-15` is invalid, while `2026-08-17` is valid.
 - `max_duration_minutes` is optional, but when provided it cannot exceed the requested availability window.
 - At least one of `include_live` or `include_vod` must be `true`.
 - The backend will validate Gemini output and may fall back deterministically if the LLM output is invalid or unavailable.
@@ -1005,10 +1225,10 @@ Success response `201`:
 ```json
 {
   "id": 7,
-  "plan_date": "2026-08-15",
+  "plan_date": "2026-08-17",
   "timezone": "Europe/Istanbul",
-  "available_start": "2026-08-15T16:00:00Z",
-  "available_end": "2026-08-15T20:00:00Z",
+  "available_start": "2026-08-17T16:00:00Z",
+  "available_end": "2026-08-17T20:00:00Z",
   "max_duration_minutes": 180,
   "include_live": true,
   "include_vod": true,
@@ -1025,7 +1245,7 @@ Success response `201`:
   "items": [
     {
       "id": 31,
-      "candidate_id": "epg:4:xmltv:ai-tonight-2026-08-15T16:00:00Z",
+      "candidate_id": "epg:4:xmltv:ai-tonight-2026-08-17T16:00:00Z",
       "result_type": "live_program",
       "title": "AI Tonight",
       "description": "Live technology documentary coverage about robotics and space.",
@@ -1033,10 +1253,10 @@ Success response `201`:
       "genres": ["Documentary"],
       "runtime_minutes": 60,
       "runtime_display": "60m",
-      "planned_start": "2026-08-15T16:00:00Z",
-      "planned_end": "2026-08-15T17:00:00Z",
-      "availability_start": "2026-08-15T16:00:00Z",
-      "availability_end": "2026-08-15T17:00:00Z",
+      "planned_start": "2026-08-17T16:00:00Z",
+      "planned_end": "2026-08-17T17:00:00Z",
+      "availability_start": "2026-08-17T16:00:00Z",
+      "availability_end": "2026-08-17T17:00:00Z",
       "recommendation_score": 0.8441,
       "reason": "Start with the live science bulletin while it is available.",
       "poster_url": "https://example.com/channel-logo.jpg",
@@ -1060,8 +1280,8 @@ Success response `201`:
       "genres": ["Documentary", "Science Fiction"],
       "runtime_minutes": 120,
       "runtime_display": "2h",
-      "planned_start": "2026-08-15T17:00:00Z",
-      "planned_end": "2026-08-15T19:00:00Z",
+      "planned_start": "2026-08-17T17:00:00Z",
+      "planned_end": "2026-08-17T19:00:00Z",
       "availability_start": null,
       "availability_end": null,
       "recommendation_score": 0.7812,
@@ -1072,8 +1292,8 @@ Success response `201`:
       "channel": null
     }
   ],
-  "created_at": "2026-08-15T13:05:00Z",
-  "updated_at": "2026-08-15T13:05:00Z"
+  "created_at": "2026-08-16T13:05:00Z",
+  "updated_at": "2026-08-16T13:05:00Z"
 }
 ```
 
@@ -1098,10 +1318,10 @@ Success response `200`:
   "items": [
     {
       "id": 7,
-      "plan_date": "2026-08-15",
+      "plan_date": "2026-08-17",
       "timezone": "Europe/Istanbul",
-      "available_start": "2026-08-15T16:00:00Z",
-      "available_end": "2026-08-15T20:00:00Z",
+      "available_start": "2026-08-17T16:00:00Z",
+      "available_end": "2026-08-17T20:00:00Z",
       "max_duration_minutes": 180,
       "include_live": true,
       "include_vod": true,
@@ -1115,8 +1335,8 @@ Success response `200`:
       "llm_model": "gemini-3.6-flash",
       "llm_repair_applied": false,
       "items": [],
-      "created_at": "2026-08-15T13:05:00Z",
-      "updated_at": "2026-08-15T13:05:00Z"
+      "created_at": "2026-08-16T13:05:00Z",
+      "updated_at": "2026-08-16T13:05:00Z"
     }
   ]
 }
@@ -1142,9 +1362,531 @@ Errors:
 
 - `401` missing or invalid token
 - `404` viewing plan not found
+
+## Phase 8 Endpoints
+
+Phase 8 adds a grounded, context-aware AI assistant. It is not a generic chatbot: every request must point to the currently viewed catalog title, live channel, or EPG program that already exists in the backend.
+
+### `POST /api/assistant/chat`
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Request for a catalog title:
+
+```json
+{
+  "message": "What is this title about and who are the main contributors?",
+  "context_type": "catalog",
+  "content_slug": "movie-journey-to-space-1"
+}
+```
+
+Request for the currently viewed live program:
+
+```json
+{
+  "message": "What can you confirm about this program right now?",
+  "context_type": "program",
+  "epg_entry_id": 41
+}
+```
+
+Notes:
+
+- `context_type` must be one of `catalog`, `channel`, or `program`.
+- `content_slug` is required for `catalog`.
+- `channel_id` is required for `channel`.
+- `epg_entry_id` is required for `program`.
+- The assistant only answers from trusted backend context. It must not invent scenes, speakers, or live-broadcast moments.
+- When transcript-level context is unavailable, the backend will clearly limit the answer to metadata/guide information.
+
+Success response `200`:
+
+```json
+{
+  "answer": "Journey to Space is a science documentary about space exploration and future missions. The trusted metadata also identifies the main cast and director-level contributors that were indexed with the title.",
+  "limitation_note": null,
+  "grounded": true,
+  "used_rag": true,
+  "generation_source": "gemini",
+  "model": "gemini-3.6-flash",
+  "context": {
+    "context_type": "catalog",
+    "title": "Journey to Space",
+    "description": "A science documentary about space exploration and the cosmos.",
+    "category_label": "Movies",
+    "content_slug": "movie-journey-to-space-1",
+    "channel_id": null,
+    "epg_entry_id": null,
+    "channel_name": null,
+    "live_status": null,
+    "current_program_title": null,
+    "next_program_title": null,
+    "has_transcript": false,
+    "metadata_only": false
+  },
+  "sources": [
+    {
+      "chunk_id": "catalog-overview:movie-journey-to-space-1",
+      "source_type": "catalog_metadata",
+      "title": "Journey to Space overview",
+      "snippet": "A science documentary about space exploration and future missions."
+    },
+    {
+      "chunk_id": "catalog-credits:movie-journey-to-space-1",
+      "source_type": "credits_metadata",
+      "title": "Journey to Space credits",
+      "snippet": "Top cast: Lead Actor. Top crew: Director."
+    }
+  ],
+  "follow_up_questions": [
+    "Who are the main contributors?",
+    "What genres define this title?"
+  ]
+}
+```
+
+Example live-program response with explicit limitation:
+
+```json
+{
+  "answer": "According to the guide metadata, AI Tonight is a live technology documentary coverage segment about robotics and space on Science World TV.",
+  "limitation_note": "No trusted transcript or moment-by-moment live feed context is available right now, so this answer is limited to guide and channel metadata.",
+  "grounded": true,
+  "used_rag": true,
+  "generation_source": "fallback",
+  "model": null,
+  "context": {
+    "context_type": "program",
+    "title": "AI Tonight",
+    "description": "Live technology documentary coverage about robotics and space.",
+    "category_label": "Documentary",
+    "content_slug": null,
+    "channel_id": 4,
+    "epg_entry_id": 41,
+    "channel_name": "Science World TV",
+    "live_status": "live",
+    "current_program_title": "AI Tonight",
+    "next_program_title": "Space Bulletin",
+    "has_transcript": false,
+    "metadata_only": true
+  },
+  "sources": [
+    {
+      "chunk_id": "program-metadata:41",
+      "source_type": "program_metadata",
+      "title": "AI Tonight guide metadata",
+      "snippet": "Program title: AI Tonight. Description: Live technology documentary coverage about robotics and space."
+    }
+  ],
+  "follow_up_questions": [
+    "What is this program about?",
+    "What is on next on this channel?"
+  ]
+}
+```
+
+Errors:
+
+- `400` invalid request body
+- `401` missing or invalid token
+- `404` content context could not be resolved
+
+## Phase 11 Endpoints
+
+Phase 11 adds authenticated Watch Party rooms with host-controlled playback synchronization and real-time room chat.
+
+### `POST /api/watch-party/rooms`
+
+Creates a new watch room for a playable catalog title or live channel.
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Request body:
+
+```json
+{
+  "target_type": "catalog",
+  "content_slug": "movie-big-buck-bunny-10378",
+  "privacy": "invite_only"
+}
+```
+
+Live-channel example:
+
+```json
+{
+  "target_type": "channel",
+  "channel_id": 4,
+  "privacy": "invite_only"
+}
+```
+
+Success response `201`:
+
+```json
+{
+  "room": {
+    "id": 1,
+    "room_code": "AB12CD",
+    "host_user_id": 7,
+    "status": "active",
+    "privacy": "invite_only",
+    "playback_state": "paused",
+    "current_position": 0.0,
+    "authoritative_position": 0.0,
+    "created_at": "2026-08-17T12:00:00Z",
+    "updated_at": "2026-08-17T12:00:00Z"
+  },
+  "target": {
+    "target_type": "catalog",
+    "content_slug": "movie-big-buck-bunny-10378",
+    "channel_id": null,
+    "title": "Big Buck Bunny",
+    "subtitle": "MOVIE • 2008",
+    "poster_url": "https://example.com/poster.jpg",
+    "backdrop_url": "https://example.com/backdrop.jpg",
+    "live_status": null,
+    "playback_supported": true
+  },
+  "role": "host",
+  "joined": true,
+  "invite_path": "#/watch-party/AB12CD",
+  "websocket_url": "/api/watch-party/ws/AB12CD",
+  "participants": [
+    {
+      "user_id": 7,
+      "username": "host",
+      "display_name": "Host User",
+      "avatar_url": null,
+      "is_host": true,
+      "joined_at": "2026-08-17T12:00:00Z",
+      "last_seen_at": "2026-08-17T12:00:00Z",
+      "is_connected": false
+    }
+  ],
+  "recent_messages": [],
+  "host_reconnect_grace_seconds": 20
+}
+```
+
+Errors:
+
+- `401` missing or invalid token
+- `404` room target not found
+- `409` target is not available for synchronized playback
+
+### `GET /api/watch-party/rooms/{room_code}`
+
+Returns the current room metadata, participants, and recent chat history for an authenticated user.
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Notes:
+
+- `joined = false` means the user can still join with the explicit join endpoint if the room is active
+- `recent_messages` is only populated for active room members
+
+### `POST /api/watch-party/rooms/{room_code}/join`
+
+Joins the authenticated user to the room and returns the same response structure as room creation.
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Errors:
+
+- `401` missing or invalid token
+- `404` room not found
+- `409` room is no longer active
+
+### `POST /api/watch-party/rooms/{room_code}/leave`
+
+Leaves the room as a participant.
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Success response `204` with an empty body.
+
+Notes:
+
+- if the host calls the leave action through REST, the backend ends the room
+- the frontend should normally use `DELETE /api/watch-party/rooms/{room_code}` for an intentional host end-room action
+
+### `DELETE /api/watch-party/rooms/{room_code}`
+
+Ends the room. Host only.
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Success response `204` with an empty body.
+
+Errors:
+
+- `401` missing or invalid token
+- `403` only the room host can end the room
+- `404` room not found
+
+## Phase 11 WebSocket Contract
+
+### `WS /api/watch-party/ws/{room_code}?token=<jwt>`
+
+The WebSocket connection requires the JWT as a query parameter. The server validates the token before accepting the socket and only allows active room members to connect.
+
+Close codes used by the backend:
+
+- `4401` authentication required or invalid token
+- `4403` user is not a room member
+- `4404` room not found
+- `4409` room is not active
+- `4002` room ended or expired
+
+### Client → Server Events
+
+#### `SYNC_REQUEST`
+
+```json
+{
+  "type": "SYNC_REQUEST"
+}
+```
+
+#### `PLAY`
+
+```json
+{
+  "type": "PLAY",
+  "position": 625.4
+}
+```
+
+#### `PAUSE`
+
+```json
+{
+  "type": "PAUSE",
+  "position": 742.1
+}
+```
+
+#### `SEEK`
+
+```json
+{
+  "type": "SEEK",
+  "position": 900.0
+}
+```
+
+#### `CHAT_MESSAGE`
+
+```json
+{
+  "type": "CHAT_MESSAGE",
+  "message": "This scene is great"
+}
+```
+
+#### `CONTENT_CHANGE`
+
+Host-only room target switch:
+
+```json
+{
+  "type": "CONTENT_CHANGE",
+  "target_type": "catalog",
+  "content_slug": "movie-big-buck-bunny-10378"
+}
+```
+
+Notes:
+
+- only the host may emit `PLAY`, `PAUSE`, `SEEK`, or `CONTENT_CHANGE`
+- participants may emit `SYNC_REQUEST` and `CHAT_MESSAGE`
+- all positions are seconds from the logical start of the room target
+
+### Server → Client Events
+
+#### `ROOM_STATE`
+
+Initial room snapshot when a socket connects.
+
+```json
+{
+  "type": "ROOM_STATE",
+  "room": {
+    "id": 1,
+    "room_code": "AB12CD",
+    "host_user_id": 7,
+    "status": "active",
+    "privacy": "invite_only",
+    "playback_state": "playing",
+    "current_position": 625.4,
+    "authoritative_position": 628.1,
+    "created_at": "2026-08-17T12:00:00Z",
+    "updated_at": "2026-08-17T12:10:00Z"
+  },
+  "target": {
+    "target_type": "catalog",
+    "content_slug": "movie-big-buck-bunny-10378",
+    "channel_id": null,
+    "title": "Big Buck Bunny",
+    "subtitle": "MOVIE • 2008",
+    "poster_url": "https://example.com/poster.jpg",
+    "backdrop_url": "https://example.com/backdrop.jpg",
+    "live_status": null,
+    "playback_supported": true
+  },
+  "participants": [],
+  "recent_messages": [],
+  "server_timestamp": "2026-08-17T12:10:03Z",
+  "drift_threshold_seconds": 1.5
+}
+```
+
+#### `USER_JOINED` / `USER_LEFT`
+
+```json
+{
+  "type": "USER_JOINED",
+  "participant": {
+    "user_id": 11,
+    "username": "guest",
+    "display_name": "Guest User",
+    "avatar_url": null,
+    "is_host": false,
+    "joined_at": "2026-08-17T12:02:00Z",
+    "last_seen_at": "2026-08-17T12:10:03Z",
+    "is_connected": true
+  },
+  "server_timestamp": "2026-08-17T12:10:03Z"
+}
+```
+
+#### `PLAY` / `PAUSE` / `SEEK`
+
+```json
+{
+  "type": "SEEK",
+  "room_code": "AB12CD",
+  "playback_state": "playing",
+  "authoritative_position": 900.0,
+  "server_timestamp": "2026-08-17T12:14:00Z",
+  "participant": {
+    "user_id": 7,
+    "username": "host",
+    "display_name": "Host User",
+    "avatar_url": null,
+    "is_host": true,
+    "joined_at": "2026-08-17T12:00:00Z",
+    "last_seen_at": "2026-08-17T12:14:00Z",
+    "is_connected": true
+  }
+}
+```
+
+#### `SYNC_STATE`
+
+```json
+{
+  "type": "SYNC_STATE",
+  "room_code": "AB12CD",
+  "playback_state": "playing",
+  "authoritative_position": 900.8,
+  "server_timestamp": "2026-08-17T12:14:04Z",
+  "drift_threshold_seconds": 1.5
+}
+```
+
+#### `CHAT_MESSAGE`
+
+```json
+{
+  "type": "CHAT_MESSAGE",
+  "message": {
+    "id": 33,
+    "user_id": 11,
+    "username": "guest",
+    "display_name": "Guest User",
+    "avatar_url": null,
+    "message_text": "This scene is great",
+    "created_at": "2026-08-17T12:15:00Z"
+  },
+  "server_timestamp": "2026-08-17T12:15:00Z"
+}
+```
+
+#### `ROOM_ENDED`
+
+```json
+{
+  "type": "ROOM_ENDED",
+  "room_code": "AB12CD",
+  "message": "The host ended the room.",
+  "server_timestamp": "2026-08-17T12:20:00Z"
+}
+```
+
+#### `ERROR`
+
+```json
+{
+  "type": "ERROR",
+  "code": "room_event_rejected",
+  "message": "Only the room host can control shared playback."
+}
+```
+
+Behavior notes:
+
+- the backend is authoritative for room membership, playback state, and chat persistence
+- clients must not trust self-supplied `user_id` values
+- the frontend should suppress event loops when applying remote playback events
+- seek correction should happen only when drift exceeds the threshold provided by the server
+- live/non-seekable sources should follow play/pause state and perform best-effort current-position sync rather than constant forced seeks
+
+## Phase 12 Endpoints
+
+Phase 12 renames the user-facing "AI Planner" to "My Channel" and adds an equivalent API surface under `/api/my-channel` that adapts the existing Phase 7 `ViewingPlannerService` rather than duplicating it. `/api/viewing-plans/*` keeps working unchanged; a plan created through either path is visible through both (same underlying storage).
+
+### `POST /api/my-channel/generate`
+
+Headers, request body, validation rules, and response shape are identical to `POST /api/viewing-plans/generate` (see Phase 7). Success response `201`, same `ViewingPlanRead` shape.
+
+### `GET /api/my-channel`
+
+Identical to `GET /api/viewing-plans` - lists the authenticated user's saved plans (most recent first).
+
+### `GET /api/my-channel/{plan_id}`
+
+Identical to `GET /api/viewing-plans/{id}`.
+
 ## Reserved for Future Phases
 
 - `/api/programs`
 - `/api/categories`
 - `/api/vod`
-- `/api/assistant`
+- `/api/social`

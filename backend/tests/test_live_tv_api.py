@@ -71,6 +71,40 @@ def test_channels_endpoint_returns_playback_and_current_program(client, db_sessi
     assert payload[0]["next_program"]["title"] == "ABC World"
 
 
+def test_channels_endpoint_filters_by_category_and_language(client, db_session, monkeypatch):
+    _freeze_sync(monkeypatch)
+    _create_channel(db_session)  # English News (default fixture values)
+    _create_channel(
+        db_session,
+        slug="trt-muzik",
+        name="TRT Muzik",
+        category="Music",
+        country="TR",
+        language="tr",
+        stream_url="https://tv-trtmuzik.medya.trt.com.tr/master.m3u8",
+    )
+
+    all_channels = client.get("/api/channels")
+    assert all_channels.status_code == 200
+    assert len(all_channels.json()) == 2
+
+    turkish_only = client.get("/api/channels", params={"language": "tr"})
+    assert turkish_only.status_code == 200
+    assert [item["slug"] for item in turkish_only.json()] == ["trt-muzik"]
+
+    music_only = client.get("/api/channels", params={"category": "Music"})
+    assert music_only.status_code == 200
+    assert [item["slug"] for item in music_only.json()] == ["trt-muzik"]
+
+    news_and_english = client.get("/api/channels", params={"category": "News", "language": "en"})
+    assert news_and_english.status_code == 200
+    assert [item["slug"] for item in news_and_english.json()] == ["abc-news-live"]
+
+    no_match = client.get("/api/channels", params={"category": "Sports"})
+    assert no_match.status_code == 200
+    assert no_match.json() == []
+
+
 def test_channel_live_endpoint_supports_youtube_playback(client, db_session, monkeypatch):
     _freeze_sync(monkeypatch)
     channel = _create_channel(

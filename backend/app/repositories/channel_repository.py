@@ -14,13 +14,23 @@ class ChannelRepository:
         statement = select(Channel).options(selectinload(Channel.epg_entries)).order_by(Channel.name.asc())
         return list(db.scalars(statement).all())
 
-    def list_active(self, *, db: Session) -> list[Channel]:
+    def list_active(
+        self,
+        *,
+        db: Session,
+        category: str | None = None,
+        language: str | None = None,
+    ) -> list[Channel]:
         statement = (
             select(Channel)
             .options(selectinload(Channel.epg_entries))
             .where(Channel.is_active.is_(True))
             .order_by(Channel.name.asc())
         )
+        if category:
+            statement = statement.where(Channel.category.ilike(category))
+        if language:
+            statement = statement.where(Channel.language.ilike(language))
         return list(db.scalars(statement).all())
 
     def get_by_id(self, *, db: Session, channel_id: int) -> Channel | None:

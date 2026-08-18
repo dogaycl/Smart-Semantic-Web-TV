@@ -20,7 +20,7 @@ export function LibraryPage(type) {
           category: activeCategory === "All" ? null : activeCategory,
           search: activeSearch || null,
           sort: sort === "newest" ? "release_date_desc" : sort === "title" ? "title_asc" : sort,
-          limit: 96
+          limit: 300
         });
         grid.innerHTML = response.items.length
           ? response.items.map((item) => ContentCard(item, { tall: type === "Movies" })).join("")

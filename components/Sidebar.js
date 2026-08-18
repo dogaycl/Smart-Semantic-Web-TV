@@ -13,7 +13,7 @@ const navGroups = [
     icon: "AI",
     links: [
       ["/discover", "Smart Search", "⌕"],
-      ["/ai", "AI Planner", "✦"],
+      ["/my-channel", "My Channel", "✦"],
       { type: "label", text: "Train AI" },
       ["/ai-tuning", "Preference Tuning", "⚙"]
     ]
@@ -30,7 +30,8 @@ const navGroups = [
 ];
 
 export function Sidebar(user) {
-  const current = location.hash.replace("#", "") || "/";
+  const rawCurrent = location.hash.replace("#", "") || "/";
+  const current = rawCurrent === "/ai" ? "/my-channel" : rawCurrent;
   const isGroupOpen = (links) => links.some((item) => Array.isArray(item) && current === item[0]);
   const renderNavItem = (item) => {
     if (!Array.isArray(item)) {
@@ -46,11 +47,10 @@ export function Sidebar(user) {
   return `
     <aside class="sidebar">
       <div class="sidebar-head">
-        <a class="brand-line" href="#/">
-          <span class="brand-mark">VX</span>
-          <span class="brand-text"><strong>Vynex</strong><small>Semantic Web TV</small></span>
+        <a class="sidebar-brand" href="#/" aria-label="Semantic Web TV home">
+          <span class="sidebar-brand-title">Semantic Web TV</span>
         </a>
-        <button class="icon-button" data-sidebar-toggle title="Collapse sidebar">≡</button>
+        <button class="icon-button sidebar-toggle-button" data-sidebar-toggle title="Collapse sidebar" aria-label="Collapse sidebar">≡</button>
       </div>
       <nav class="nav-list">
         ${navGroups.map((group) => `

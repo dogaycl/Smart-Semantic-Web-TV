@@ -17,6 +17,8 @@ sync_service = LiveTVSyncService()
 
 WindowStart = Annotated[datetime | None, Query()]
 WindowEnd = Annotated[datetime | None, Query()]
+CategoryFilter = Annotated[str | None, Query()]
+LanguageFilter = Annotated[str | None, Query()]
 
 
 @router.get("", response_model=list[ChannelRead], status_code=status.HTTP_200_OK)
@@ -24,9 +26,11 @@ def list_channels(
     db: Session = Depends(get_db),
     start: WindowStart = None,
     end: WindowEnd = None,
+    category: CategoryFilter = None,
+    language: LanguageFilter = None,
 ) -> list[ChannelRead]:
     sync_service.ensure_ready(db=db, window_start=start, window_end=end)
-    channels = channel_repository.list_active(db=db)
+    channels = channel_repository.list_active(db=db, category=category, language=language)
     return [live_tv_service.build_channel_read(channel) for channel in channels]
 
 

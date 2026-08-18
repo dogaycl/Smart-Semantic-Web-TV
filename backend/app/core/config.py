@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = "gemini-embedding-2"
     gemini_embedding_dimensions: int = 768
     gemini_viewing_planner_model: str = "gemini-3.6-flash"
+    gemini_assistant_model: str = "gemini-3.6-flash"
     tmdb_api_key: str | None = None
     tmdb_access_token: str | None = None
     tmdb_language: str = "en-US"
@@ -42,12 +43,21 @@ class Settings(BaseSettings):
     catalog_sync_ttl_minutes: int = 1440
     catalog_sync_target_items: int = 160
     catalog_request_timeout_seconds: float = 12.0
+    playback_catalog_auto_sync: bool = True
+    playback_health_checks_enabled: bool = True
+    playback_health_ttl_minutes: int = 180
+    playback_request_timeout_seconds: float = 10.0
     search_index_auto_sync: bool = True
     search_index_epg_window_hours: int = 48
     search_request_timeout_seconds: float = 12.0
     recommendation_default_window_hours: int = 12
     viewing_planner_candidate_limit: int = 18
     viewing_planner_max_items: int = 6
+    watch_party_host_reconnect_grace_seconds: int = 30
+    watch_party_chat_history_limit: int = 40
+    watch_party_chat_message_max_length: int = 400
+    watch_party_drift_threshold_seconds: float = 1.5
+    watch_party_sync_request_interval_seconds: int = 12
 
 
 @lru_cache

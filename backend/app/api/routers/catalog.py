@@ -3,16 +3,25 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_current_user_optional
 from app.api.deps.db import get_db
 from app.repositories.catalog_repository import CatalogRepository
 from app.schemas.catalog import CatalogItemDetailRead, CatalogListResponse
+from app.schemas.playback import CatalogPlaybackResponse
 from app.services.catalog.service import CatalogService
 from app.services.catalog.sync_service import CatalogSyncService
+from app.services.playback.service import CatalogPlaybackService
+from app.services.playback.sync_service import PlaybackCatalogSyncService
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 catalog_repository = CatalogRepository()
 catalog_service = CatalogService()
 sync_service = CatalogSyncService()
+playback_sync_service = PlaybackCatalogSyncService(
+    catalog_repository=catalog_repository,
+    catalog_sync_service=sync_service,
+)
+playback_service = CatalogPlaybackService(catalog_repository=catalog_repository)
 
 SortOption = Literal["popularity_desc", "rating_desc", "release_date_desc", "title_asc"]
 SortParam = Annotated[SortOption, Query()]
@@ -33,6 +42,7 @@ def _list_catalog(
     slugs: str | None,
 ) -> CatalogListResponse:
     sync_service.ensure_ready(db=db)
+    playback_sync_service.ensure_ready(db=db)
     genre_names = catalog_service.filter_genre_names_for_category(category)
     if genre:
         genre_names = list(dict.fromkeys([*(genre_names or []), genre]))
@@ -136,8 +146,23 @@ def get_catalog_item(
     db: Session = Depends(get_db),
 ) -> CatalogItemDetailRead:
     sync_service.ensure_ready(db=db)
+    playback_sync_service.ensure_ready(db=db)
     item = catalog_repository.get_by_slug(db=db, slug=slug)
     if item is None or not item.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found.")
     related_items = catalog_repository.list_related(db=db, item=item)
     return catalog_service.build_detail(item, related_items)
+
+
+@router.get("/{slug}/playback", response_model=CatalogPlaybackResponse, status_code=status.HTTP_200_OK)
+def get_catalog_item_playback(
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+) -> CatalogPlaybackResponse:
+    sync_service.ensure_ready(db=db)
+    playback_sync_service.ensure_ready(db=db)
+    item = catalog_repository.get_by_slug(db=db, slug=slug)
+    if item is None or not item.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found.")
+    return playback_service.build_response(db=db, item=item, current_user=current_user)

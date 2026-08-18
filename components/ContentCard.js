@@ -1,4 +1,4 @@
-import { isFavorite, toggleFavorite } from "../services/favoritesService.js";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
 
 export function gradient(colors) {
   return `linear-gradient(135deg, ${colors})`;
@@ -15,12 +15,21 @@ export function ContentCard(item, options = {}) {
   const href = item.routePath || `#/content/${item.id}`;
   queueMicrotask(() => {
     document.querySelectorAll(`[data-fav="${item.id}"]`).forEach((button) => {
-      button.addEventListener("click", (event) => {
+      button.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        toggleFavorite(item.id);
-        button.classList.toggle("active");
-        button.textContent = button.classList.contains("active") ? "★" : "☆";
+        button.disabled = true;
+        try {
+          const favorites = await toggleFavorite(item.id);
+          const active = favorites.includes(String(item.id));
+          button.classList.toggle("active", active);
+          button.textContent = active ? "★" : "☆";
+        } catch {
+          button.classList.toggle("active", isFavorite(item.id));
+          button.textContent = isFavorite(item.id) ? "★" : "☆";
+        } finally {
+          button.disabled = false;
+        }
       });
     });
     if (item.liveChannelId) {

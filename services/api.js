@@ -35,10 +35,18 @@ function normalizeErrorMessage(payload, fallback) {
 
 export async function apiRequest(path, { method = "GET", body, token, headers = {} } = {}) {
   let response;
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeout = controller
+    ? window.setTimeout(() => {
+      controller.abort();
+    }, 20000)
+    : null;
 
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
+      cache: "no-store",
+      signal: controller?.signal,
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -46,9 +54,14 @@ export async function apiRequest(path, { method = "GET", body, token, headers = 
       },
       body: body ? JSON.stringify(body) : undefined
     });
-  } catch {
-    throw new ApiError("Backend is unreachable.", 0);
+  } catch (error) {
+    if (timeout) window.clearTimeout(timeout);
+    if (error?.name === "AbortError") {
+      throw new ApiError("The server took too long to respond.", 0);
+    }
+    throw new ApiError("Unable to connect to server.", 0);
   }
+  if (timeout) window.clearTimeout(timeout);
 
   const raw = await response.text();
   let payload = null;
@@ -99,7 +112,7 @@ async function getCatalogCache({ force = false } = {}) {
 
   catalogCachePromise = fetchCatalogList("/api/catalog", {
     sort: "popularity_desc",
-    limit: 200
+    limit: 300
   })
     .then((payload) => {
       catalogCache = payload.items;
@@ -199,6 +212,223 @@ function normalizeViewingPlan(plan) {
   };
 }
 
+function normalizePlaybackSource(source) {
+  if (!source) return null;
+  return {
+    id: source.id,
+    name: source.name,
+    type: source.type,
+    playbackUrl: source.playback_url,
+    embedUrl: source.embed_url,
+    externalVideoId: source.external_video_id,
+    quality: source.quality,
+    language: source.language ? String(source.language).toUpperCase() : null,
+    isPrimary: Boolean(source.is_primary),
+    providerName: source.provider_name || null,
+    providerUrl: source.provider_url || null,
+    licenseNote: source.license_note || null,
+    sourceNote: source.source_note || null,
+    lastCheckedAt: source.last_checked_at || null,
+    error: source.error || null,
+    capabilities: source.capabilities || {
+      can_play: false,
+      can_pause: false,
+      can_seek: false,
+      can_report_progress: false,
+      can_fullscreen: true,
+      supports_seek: false,
+      supports_state_tracking: false
+    }
+  };
+}
+
+function normalizePlayback(payload) {
+  if (!payload) return null;
+  return {
+    contentId: payload.content_id,
+    slug: payload.slug,
+    title: payload.title,
+    playbackAvailable: Boolean(payload.playback_available),
+    watchAction: payload.watch_action,
+    message: payload.message,
+    primarySource: normalizePlaybackSource(payload.primary_source),
+    sources: (payload.sources || []).map(normalizePlaybackSource),
+    trailer: payload.trailer || null,
+    fallback: payload.fallback
+      ? {
+          type: payload.fallback.type,
+          label: payload.fallback.label,
+          message: payload.fallback.message || "",
+          embedUrl: payload.fallback.embed_url || null
+        }
+      : null,
+    watchProgress: payload.watch_progress
+      ? {
+          watchPositionSeconds: payload.watch_progress.watch_position_seconds,
+          totalWatchedDurationSeconds: payload.watch_progress.total_watched_duration_seconds,
+          isCompleted: Boolean(payload.watch_progress.is_completed),
+          lastWatchedAt: payload.watch_progress.last_watched_at
+        }
+      : null
+  };
+}
+
+function normalizeWatchHistoryEntry(entry) {
+  return {
+    contentId: entry.content_id,
+    contentType: entry.content_type,
+    watchPositionSeconds: entry.watch_position_seconds,
+    totalWatchedDurationSeconds: entry.total_watched_duration_seconds,
+    isCompleted: Boolean(entry.is_completed),
+    lastWatchedAt: entry.last_watched_at,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at
+  };
+}
+
+function normalizeWatchPartyParticipant(entry) {
+  return {
+    userId: entry.user_id,
+    username: entry.username,
+    displayName: entry.display_name,
+    avatarUrl: entry.avatar_url || null,
+    isHost: Boolean(entry.is_host),
+    joinedAt: entry.joined_at,
+    lastSeenAt: entry.last_seen_at || null,
+    isConnected: Boolean(entry.is_connected)
+  };
+}
+
+function normalizeWatchPartyMessage(entry) {
+  return {
+    id: entry.id,
+    userId: entry.user_id,
+    username: entry.username,
+    displayName: entry.display_name,
+    avatarUrl: entry.avatar_url || null,
+    messageText: entry.message_text,
+    createdAt: entry.created_at
+  };
+}
+
+function normalizeWatchPartyTarget(entry) {
+  return {
+    targetType: entry.target_type,
+    contentSlug: entry.content_slug || null,
+    channelId: entry.channel_id || null,
+    title: entry.title,
+    subtitle: entry.subtitle || null,
+    posterUrl: entry.poster_url || null,
+    backdropUrl: entry.backdrop_url || null,
+    liveStatus: entry.live_status || null,
+    playbackSupported: Boolean(entry.playback_supported)
+  };
+}
+
+function normalizeWatchPartyRoom(entry) {
+  return {
+    id: entry.id,
+    roomCode: entry.room_code,
+    hostUserId: entry.host_user_id,
+    status: entry.status,
+    privacy: entry.privacy,
+    playbackState: entry.playback_state,
+    currentPosition: entry.current_position,
+    authoritativePosition: entry.authoritative_position,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at
+  };
+}
+
+function normalizeWatchPartyDetail(payload) {
+  if (!payload) return null;
+  return {
+    room: normalizeWatchPartyRoom(payload.room),
+    target: normalizeWatchPartyTarget(payload.target),
+    role: payload.role || null,
+    joined: Boolean(payload.joined),
+    invitePath: payload.invite_path,
+    websocketUrl: payload.websocket_url,
+    participants: (payload.participants || []).map(normalizeWatchPartyParticipant),
+    recentMessages: (payload.recent_messages || []).map(normalizeWatchPartyMessage),
+    hostReconnectGraceSeconds: payload.host_reconnect_grace_seconds
+  };
+}
+
+function normalizeWatchPartyEvent(payload) {
+  if (!payload?.type) return payload;
+
+  if (payload.type === "ROOM_STATE") {
+    return {
+      type: payload.type,
+      room: normalizeWatchPartyRoom(payload.room),
+      target: normalizeWatchPartyTarget(payload.target),
+      participants: (payload.participants || []).map(normalizeWatchPartyParticipant),
+      recentMessages: (payload.recent_messages || []).map(normalizeWatchPartyMessage),
+      serverTimestamp: payload.server_timestamp,
+      driftThresholdSeconds: payload.drift_threshold_seconds
+    };
+  }
+
+  if (payload.type === "USER_JOINED" || payload.type === "USER_LEFT") {
+    return {
+      type: payload.type,
+      participant: normalizeWatchPartyParticipant(payload.participant),
+      serverTimestamp: payload.server_timestamp
+    };
+  }
+
+  if (payload.type === "SYNC_STATE") {
+    return {
+      type: payload.type,
+      roomCode: payload.room_code,
+      playbackState: payload.playback_state,
+      authoritativePosition: payload.authoritative_position,
+      serverTimestamp: payload.server_timestamp,
+      driftThresholdSeconds: payload.drift_threshold_seconds
+    };
+  }
+
+  if (payload.type === "PLAY" || payload.type === "PAUSE" || payload.type === "SEEK" || payload.type === "CONTENT_CHANGE") {
+    return {
+      type: payload.type,
+      roomCode: payload.room_code,
+      playbackState: payload.playback_state,
+      authoritativePosition: payload.authoritative_position,
+      serverTimestamp: payload.server_timestamp,
+      participant: payload.participant ? normalizeWatchPartyParticipant(payload.participant) : null,
+      target: payload.target ? normalizeWatchPartyTarget(payload.target) : null
+    };
+  }
+
+  if (payload.type === "CHAT_MESSAGE") {
+    return {
+      type: payload.type,
+      message: normalizeWatchPartyMessage(payload.message),
+      serverTimestamp: payload.server_timestamp
+    };
+  }
+
+  if (payload.type === "ROOM_ENDED") {
+    return {
+      type: payload.type,
+      roomCode: payload.room_code,
+      message: payload.message,
+      serverTimestamp: payload.server_timestamp
+    };
+  }
+
+  if (payload.type === "ERROR") {
+    return {
+      type: payload.type,
+      code: payload.code,
+      message: payload.message
+    };
+  }
+
+  return payload;
+}
+
 export const api = {
   async getCatalog({ contentType = null, category = null, genre = null, search = null, sort = "popularity_desc", limit = 48, offset = 0, slugs = null } = {}) {
     const endpoint = contentType === "movie" ? "/api/catalog/movies" : contentType === "tv" ? "/api/catalog/series" : "/api/catalog";
@@ -226,6 +456,68 @@ export const api = {
   async getContentById(id) {
     const payload = await apiRequest(`/api/catalog/${id}`);
     return normalizeCatalogDetail(payload);
+  },
+  async getContentPlayback(id) {
+    const token = getStoredToken();
+    const payload = await apiRequest(`/api/catalog/${id}/playback`, {
+      token
+    });
+    return normalizePlayback(payload);
+  },
+  async createWatchPartyRoom(payload) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const response = await apiRequest("/api/watch-party/rooms", {
+      method: "POST",
+      token,
+      body: payload
+    });
+    return normalizeWatchPartyDetail(response);
+  },
+  async getWatchPartyRoom(roomCode) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const response = await apiRequest(`/api/watch-party/rooms/${roomCode}`, {
+      token
+    });
+    return normalizeWatchPartyDetail(response);
+  },
+  async joinWatchPartyRoom(roomCode) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const response = await apiRequest(`/api/watch-party/rooms/${roomCode}/join`, {
+      method: "POST",
+      token
+    });
+    return normalizeWatchPartyDetail(response);
+  },
+  async leaveWatchPartyRoom(roomCode) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    await apiRequest(`/api/watch-party/rooms/${roomCode}/leave`, {
+      method: "POST",
+      token
+    });
+    return true;
+  },
+  async endWatchPartyRoom(roomCode) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    await apiRequest(`/api/watch-party/rooms/${roomCode}`, {
+      method: "DELETE",
+      token
+    });
+    return true;
   },
   async getContentByCategory(category, { contentType = null, search = null, sort = "popularity_desc", limit = 96 } = {}) {
     const response = await this.getCatalog({
@@ -299,6 +591,69 @@ export const api = {
   getChannelLive(channelId) {
     return apiRequest(`/api/channels/${channelId}/live`);
   },
+  async getMyWatchHistory() {
+    const token = getStoredToken();
+    if (!token) return [];
+    const payload = await apiRequest("/api/users/me/history", {
+      token
+    });
+    return (payload || []).map(normalizeWatchHistoryEntry);
+  },
+  async getMyFavorites() {
+    const token = getStoredToken();
+    if (!token) return [];
+    const payload = await apiRequest("/api/users/me/favorites", {
+      token
+    });
+    return (payload || []).map((item) => String(item.content_id));
+  },
+  async addMyFavorite(contentId) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    await apiRequest(`/api/users/me/favorites/${encodeURIComponent(String(contentId))}`, {
+      method: "POST",
+      token
+    });
+    return true;
+  },
+  async removeMyFavorite(contentId) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    await apiRequest(`/api/users/me/favorites/${encodeURIComponent(String(contentId))}`, {
+      method: "DELETE",
+      token
+    });
+    return true;
+  },
+  async upsertWatchHistory({
+    contentId,
+    contentType = "content",
+    watchPositionSeconds = 0,
+    totalWatchedDurationSeconds = 0,
+    isCompleted = false,
+    lastWatchedAt = null
+  }) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    return apiRequest("/api/users/me/history", {
+      method: "POST",
+      token,
+      body: {
+        content_id: contentId,
+        content_type: contentType,
+        watch_position_seconds: Math.max(0, Math.floor(watchPositionSeconds)),
+        total_watched_duration_seconds: Math.max(0, Math.floor(totalWatchedDurationSeconds)),
+        is_completed: Boolean(isCompleted),
+        last_watched_at: lastWatchedAt
+      }
+    });
+  },
   async generateViewingPlan(payload) {
     const token = getStoredToken();
     if (!token) {
@@ -328,5 +683,49 @@ export const api = {
       token
     });
     return normalizeViewingPlan(payload);
+  },
+  async generateMyChannel(payload) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const plan = await apiRequest("/api/my-channel/generate", {
+      method: "POST",
+      token,
+      body: payload
+    });
+    return normalizeViewingPlan(plan);
+  },
+  async getMyChannelPlans() {
+    const token = getStoredToken();
+    if (!token) return [];
+    const payload = await apiRequest("/api/my-channel", {
+      token
+    });
+    return (payload.items || []).map(normalizeViewingPlan);
+  },
+  async getMyChannelPlan(planId) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const payload = await apiRequest(`/api/my-channel/${planId}`, {
+      token
+    });
+    return normalizeViewingPlan(payload);
+  },
+  async assistantChat(payload) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    return apiRequest("/api/assistant/chat", {
+      method: "POST",
+      token,
+      body: payload
+    });
+  },
+  normalizeWatchPartyEvent(payload) {
+    return normalizeWatchPartyEvent(payload);
   }
 };

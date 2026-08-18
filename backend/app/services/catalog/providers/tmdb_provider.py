@@ -86,6 +86,62 @@ class TMDBProvider(CatalogProvider):
             return self._fetch_movie(tmdb_id)
         return self._fetch_tv(tmdb_id)
 
+    def search_catalog_item(
+        self,
+        *,
+        title: str,
+        content_type: ContentType,
+        release_year: int | None = None,
+    ) -> CatalogCandidate | None:
+        if not self.is_configured():
+            return None
+
+        params: dict[str, Any] = {
+            "language": self.settings.tmdb_language,
+            "query": title,
+            "include_adult": "false",
+            "page": 1,
+        }
+        if release_year:
+            if content_type == "movie":
+                params["primary_release_year"] = release_year
+            else:
+                params["first_air_date_year"] = release_year
+
+        payload = self._request_json(f"/search/{content_type}", params=params)
+        results = payload.get("results", [])
+        if not results:
+            return None
+
+        normalized_query = self._normalize_title(title)
+        for value in results:
+            tmdb_id = self._safe_int(value.get("id"))
+            candidate_title = value.get("title") or value.get("name") or ""
+            if not tmdb_id or not candidate_title:
+                continue
+
+            if release_year:
+                release_value = value.get("release_date") or value.get("first_air_date")
+                parsed_release = self._parse_date(release_value)
+                if parsed_release and parsed_release.year != release_year:
+                    continue
+
+            if self._normalize_title(candidate_title) != normalized_query:
+                continue
+
+            return CatalogCandidate(
+                tmdb_id=tmdb_id,
+                content_type=content_type,
+                title=candidate_title,
+            )
+
+        first = results[0]
+        tmdb_id = self._safe_int(first.get("id"))
+        candidate_title = first.get("title") or first.get("name") or ""
+        if not tmdb_id or not candidate_title:
+            return None
+        return CatalogCandidate(tmdb_id=tmdb_id, content_type=content_type, title=candidate_title)
+
     def _fetch_movie(self, tmdb_id: int) -> ExternalCatalogItemPayload:
         payload = self._request_json(
             f"/movie/{tmdb_id}",
@@ -341,6 +397,9 @@ class TMDBProvider(CatalogProvider):
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+
+    def _normalize_title(self, value: str) -> str:
+        return " ".join(value.casefold().replace(":", " ").replace("-", " ").split())
 
     def _safe_int(self, value: Any) -> int | None:
         if value is None or value == "":

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from app.schemas.assistant import AssistantLLMResponse
 from app.schemas.planner import ViewingPlannerLLMResponse
 
 
@@ -16,4 +17,12 @@ class LLMService(ABC):
         *,
         prompt: str,
     ) -> ViewingPlannerLLMResponse:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_assistant_reply(
+        self,
+        *,
+        prompt: str,
+    ) -> AssistantLLMResponse:
         raise NotImplementedError

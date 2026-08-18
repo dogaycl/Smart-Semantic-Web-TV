@@ -14,17 +14,42 @@ function statusLabel(channel) {
   return "Unavailable";
 }
 
+function localeLabel(channel) {
+  const parts = [];
+  if (channel.language) parts.push(String(channel.language).toUpperCase());
+  if (channel.country) parts.push(channel.country);
+  return parts.join(" • ") || "Region metadata unavailable";
+}
+
 function currentLabel(channel) {
-  return channel.current_program?.title || channel.live_title || "No live program metadata";
+  if (channel.current_program?.title) return channel.current_program.title;
+  if (channel.live_title) return channel.live_title;
+  if (channel.guide_entries > 0) return "Guide loaded for this channel";
+  return "Schedule unavailable";
 }
 
 function nextLabel(channel) {
-  return channel.next_program?.title || "No upcoming guide data";
+  if (channel.next_program?.title) return channel.next_program.title;
+  if (channel.guide_entries > 0) return "No later slot in the current guide window";
+  return "Schedule unavailable";
 }
 
 export function ChannelList(channels, selectedChannelId) {
+  if (!channels.length) {
+    return `
+      <aside class="panel page-panel channel-panel">
+        <div class="section-head"><h2>Channels</h2><span class="muted">Real live sources</span></div>
+        <div class="live-fallback">
+          <span class="live-badge">Empty</span>
+          <strong>No channels matched this filter</strong>
+          <small class="muted">Try another category to see the curated English live catalog.</small>
+        </div>
+      </aside>
+    `;
+  }
+
   return `
-    <aside class="panel page-panel">
+    <aside class="panel page-panel channel-panel">
       <div class="section-head"><h2>Channels</h2><span class="muted">Real live sources</span></div>
       <div class="channel-list">
         ${channels.map((channel) => `
@@ -39,9 +64,10 @@ export function ChannelList(channels, selectedChannelId) {
               <div class="channel-meta">
                 <span class="live-badge">${statusLabel(channel)}</span>
                 <span class="channel-source">${channel.source_type === "youtube" ? "YouTube" : "HLS"}</span>
-                ${currentLabel(channel)}
+                ${localeLabel(channel)}
               </div>
-              <small class="muted">Next: ${nextLabel(channel)}${channel.category ? ` • ${channel.category}` : ""}</small>
+              <small class="muted">${currentLabel(channel)}</small>
+              <small class="muted">Next: ${nextLabel(channel)}${channel.category ? ` • ${channel.category}` : ""}${channel.guide_entries > 0 ? ` • ${channel.guide_entries} guide items` : " • Schedule unavailable"}</small>
             </div>
           </button>
         `).join("")}

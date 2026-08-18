@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,8 @@ from app.services.search.index_service import SearchIndexService
 from app.services.search.query_parser import normalize_text, tokenize_text
 from app.services.search.result_builder import DiscoveryResultBuilder
 from app.services.search.service import cosine_similarity
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -187,7 +190,11 @@ class RecommendationService:
     def _semantic_scores(self, *, db: Session, query: str, limit: int) -> dict[str, float]:
         if not self.embedding_service.is_configured():
             return {}
-        embedding = self.embedding_service.embed_query(query)
+        try:
+            embedding = self.embedding_service.embed_query(query)
+        except Exception as exc:
+            logger.warning("Gemini embedding query failed, scoring without semantic similarity: %s", exc)
+            return {}
         return {
             document.source_key: score
             for document, score in self.search_repository.semantic_candidates(
@@ -236,6 +243,10 @@ class RecommendationService:
         if document.source_key in source_documents:
             repeat_penalty = 0.15
 
+        matched_category = next(
+            (category for category in profile.preferred_categories if normalize_text(category) in document_categories),
+            None,
+        )
         related_title = self._closest_anchor_title(document=document, source_documents=source_documents)
         score = (
             (semantic_score * 0.4)
@@ -250,8 +261,8 @@ class RecommendationService:
         if score <= 0.06:
             return 0.0, ""
 
-        if document.document_type == "epg" and category_score > 0 and profile.preferred_categories:
-            return score, f"Live tonight and matches your {profile.preferred_categories[0]} preference."
+        if document.document_type == "epg" and matched_category:
+            return score, f"Live tonight and matches your {matched_category} preference."
         if related_title and related_title != document.title:
             return score, f"Similar to {related_title}."
         if profile.top_genres:

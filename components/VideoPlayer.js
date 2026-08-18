@@ -2,6 +2,7 @@ import { mediaBackground } from "./ContentCard.js";
 
 let hlsScriptPromise = null;
 let hlsInstance = null;
+let playbackTimeoutId = null;
 
 function playerTitle(channel) {
   return channel.current_program?.title || channel.live_title || channel.name;
@@ -70,6 +71,8 @@ export function VideoPlayer(channel) {
 }
 
 export function cleanupVideoPlayer() {
+  window.clearTimeout(playbackTimeoutId);
+  playbackTimeoutId = null;
   if (hlsInstance) {
     hlsInstance.destroy();
     hlsInstance = null;
@@ -92,7 +95,7 @@ async function loadHlsScript() {
   return hlsScriptPromise;
 }
 
-export async function mountVideoPlayer(channel) {
+export async function mountVideoPlayer(channel, { onPlaybackFailure } = {}) {
   cleanupVideoPlayer();
 
   if (channel.playback.type !== "hls" || !channel.playback.stream_url) return;
@@ -100,6 +103,31 @@ export async function mountVideoPlayer(channel) {
   const video = document.querySelector("[data-live-video]");
   const status = document.querySelector("[data-live-player-status]");
   if (!video) return;
+
+  const failPlayback = (message) => {
+    if (status) status.textContent = message;
+    onPlaybackFailure?.(message);
+  };
+
+  const markPlayable = () => {
+    window.clearTimeout(playbackTimeoutId);
+    playbackTimeoutId = null;
+    if (status && !status.textContent.startsWith("Switching")) {
+      status.textContent = "";
+    }
+  };
+
+  video.addEventListener("loadedmetadata", markPlayable, { once: true });
+  video.addEventListener("playing", markPlayable, { once: true });
+  video.addEventListener("error", () => {
+    failPlayback("This live stream stopped responding in the browser.");
+  }, { once: true });
+
+  playbackTimeoutId = window.setTimeout(() => {
+    if ((video.readyState || 0) < 2) {
+      failPlayback("This channel is taking too long to start.");
+    }
+  }, 12000);
 
   if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = channel.playback.stream_url;
@@ -109,7 +137,7 @@ export async function mountVideoPlayer(channel) {
 
   const Hls = await loadHlsScript();
   if (!Hls?.isSupported()) {
-    if (status) status.textContent = "Your browser does not support HLS playback.";
+    failPlayback("Your browser does not support HLS playback.");
     return;
   }
 
@@ -120,8 +148,8 @@ export async function mountVideoPlayer(channel) {
     video.play().catch(() => {});
   });
   hlsInstance.on(Hls.Events.ERROR, (_, data) => {
-    if (data?.fatal && status) {
-      status.textContent = "The live stream could not be played in this browser.";
+    if (data?.fatal) {
+      failPlayback("The live stream could not be played in this browser.");
     }
   });
 }

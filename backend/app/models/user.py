@@ -41,3 +41,19 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    hosted_watch_rooms = relationship(
+        "WatchRoom",
+        back_populates="host_user",
+        cascade="all, delete-orphan",
+        foreign_keys="WatchRoom.host_user_id",
+    )
+    watch_room_participants = relationship(
+        "WatchRoomParticipant",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    watch_room_messages = relationship(
+        "WatchRoomMessage",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

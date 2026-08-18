@@ -1,8 +1,58 @@
 import { getCurrentUser, logout } from "../contexts/authContext.js";
-import { Sidebar } from "./Sidebar.js";
-import { Topbar } from "./Topbar.js";
+import { api } from "../services/api.js";
+import { Sidebar } from "./Sidebar.js?v=25";
+import { Topbar } from "./Topbar.js?v=25";
 import { AIAssistant } from "./AIAssistant.js";
-import { CommandPalette, getCommandItems } from "./CommandPalette.js";
+import { CommandPalette, getCommandItems } from "./CommandPalette.js?v=25";
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function getAssistantContext() {
+  const element = document.querySelector("[data-assistant-context]");
+  if (!element?.dataset?.contextType) return null;
+
+  return {
+    context_type: element.dataset.contextType,
+    content_slug: element.dataset.contentSlug || undefined,
+    channel_id: element.dataset.channelId ? Number(element.dataset.channelId) : undefined,
+    epg_entry_id: element.dataset.epgEntryId ? Number(element.dataset.epgEntryId) : undefined,
+    label: element.dataset.contextLabel || "Current content"
+  };
+}
+
+function updateAssistantContextLabel() {
+  const label = getAssistantContext()?.label || "Open a movie, series, or live channel";
+  document.querySelector("[data-ai-context-label]")?.replaceChildren(document.createTextNode(label));
+}
+
+function appendAiMessage(chat, html, className = "") {
+  const classes = ["ai-message", className].filter(Boolean).join(" ");
+  chat.insertAdjacentHTML("beforeend", `<div class="${classes}">${html}</div>`);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function renderAssistantReply(payload) {
+  const sources = (payload.sources || []).slice(0, 3).map((source) => `
+    <li><strong>${escapeHtml(source.title)}</strong>: ${escapeHtml(source.snippet)}</li>
+  `).join("");
+  const followUps = (payload.follow_up_questions || []).map((question) => `
+    <button data-ai-prompt="${escapeHtml(question)}">${escapeHtml(question)}</button>
+  `).join("");
+
+  return `
+    <div class="assistant-answer-copy">${escapeHtml(payload.answer)}</div>
+    ${payload.limitation_note ? `<p class="muted">${escapeHtml(payload.limitation_note)}</p>` : ""}
+    ${sources ? `<ul class="ai-source-list">${sources}</ul>` : ""}
+    ${followUps ? `<div class="ai-suggestions">${followUps}</div>` : ""}
+  `;
+}
 
 export function AppLayout(content) {
   const user = getCurrentUser();
@@ -38,6 +88,7 @@ export function AppLayout(content) {
     const aiPanel = document.querySelector("[data-ai-panel]");
     const aiToggle = document.querySelector("[data-ai-toggle]");
     const openAi = () => {
+      updateAssistantContextLabel();
       aiPanel?.classList.add("open");
       aiToggle?.setAttribute("aria-expanded", "true");
       document.querySelector("[data-ai-input]")?.focus();
@@ -48,24 +99,54 @@ export function AppLayout(content) {
     };
     aiToggle?.addEventListener("click", openAi);
     document.querySelector("[data-ai-close]")?.addEventListener("click", closeAi);
-    document.querySelectorAll("[data-ai-prompt]").forEach((button) => {
-      button.addEventListener("click", () => {
-        document.querySelector("[data-ai-input]").value = button.dataset.aiPrompt;
-        openAi();
-      });
+    document.addEventListener("click", (event) => {
+      const promptButton = event.target.closest("[data-ai-prompt]");
+      if (!promptButton) return;
+      document.querySelector("[data-ai-input]").value = promptButton.dataset.aiPrompt;
+      openAi();
     });
-    document.querySelector("[data-ai-form]")?.addEventListener("submit", (event) => {
+    document.querySelector("[data-ai-form]")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const input = document.querySelector("[data-ai-input]");
       const chat = document.querySelector(".ai-chat");
       const value = input.value.trim();
       if (!value) return;
-      chat.insertAdjacentHTML("beforeend", `<div class="ai-message user">${value}</div>`);
-      chat.insertAdjacentHTML("beforeend", `<div class="ai-message">I found semantic matches in Movies, Series, and Technology. Try opening Discover for full results.</div>`);
-      sessionStorage.setItem("synapse.semantic.query", value);
+      const context = getAssistantContext();
+      appendAiMessage(chat, escapeHtml(value), "user");
       input.value = "";
-      chat.scrollTop = chat.scrollHeight;
+      if (!context) {
+        appendAiMessage(
+          chat,
+          "Open a movie, series, or live channel first so I can answer with trusted content context."
+        );
+        return;
+      }
+
+      appendAiMessage(chat, "Checking trusted context...", "loading");
+      const loadingNode = chat.lastElementChild;
+
+      try {
+        const response = await api.assistantChat({
+          message: value,
+          context_type: context.context_type,
+          content_slug: context.content_slug,
+          channel_id: context.channel_id,
+          epg_entry_id: context.epg_entry_id
+        });
+        loadingNode?.remove();
+        appendAiMessage(chat, renderAssistantReply(response));
+      } catch (error) {
+        loadingNode?.remove();
+        if (error?.status === 401) {
+          logout();
+          location.hash = "/login";
+          return;
+        }
+        appendAiMessage(chat, escapeHtml(error.message || "AI assistant is unavailable right now."));
+      }
     });
+    document.addEventListener("assistant:context-changed", updateAssistantContextLabel);
+    updateAssistantContextLabel();
     const palette = document.querySelector("[data-command-palette]");
     const commandInput = document.querySelector("[data-command-input]");
     const commandResults = document.querySelector("[data-command-results]");

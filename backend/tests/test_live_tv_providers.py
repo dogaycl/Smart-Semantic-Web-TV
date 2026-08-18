@@ -73,11 +73,24 @@ def test_hls_stream_provider_marks_manifest_as_healthy(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def get(self, url):
+        def get(self, url, headers=None):
             request = httpx.Request("GET", url)
+            if url.endswith("media.m3u8"):
+                return httpx.Response(
+                    200,
+                    headers={
+                        "content-type": "application/vnd.apple.mpegurl",
+                        "access-control-allow-origin": "*",
+                    },
+                    text="#EXTM3U\n#EXTINF:10,\nsegment0.ts",
+                    request=request,
+                )
             return httpx.Response(
                 200,
-                headers={"content-type": "application/vnd.apple.mpegurl"},
+                headers={
+                    "content-type": "application/vnd.apple.mpegurl",
+                    "access-control-allow-origin": "*",
+                },
                 text="#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1500000\nmedia.m3u8",
                 request=request,
             )

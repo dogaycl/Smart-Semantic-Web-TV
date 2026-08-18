@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.types import UserDefinedType
 
 
@@ -22,7 +23,19 @@ depends_on: Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    bind = op.get_bind()
+    context = op.get_context()
+    embedding_type: sa.types.TypeEngine = sa.JSON()
+
+    try:
+        with context.autocommit_block():
+            bind.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+        embedding_type = VectorType()
+    except sa_exc.DBAPIError:
+        # Local development may not have pgvector installed yet. In that case
+        # we still create the search index table and rely on JSON-backed
+        # fallback behavior until the extension is available.
+        embedding_type = sa.JSON()
 
     op.create_table(
         "search_documents",
@@ -54,7 +67,7 @@ def upgrade() -> None:
         sa.Column("availability_end", sa.DateTime(timezone=True), nullable=True),
         sa.Column("searchable_text", sa.Text(), nullable=False),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
-        sa.Column("embedding", VectorType(), nullable=True),
+        sa.Column("embedding", embedding_type, nullable=True),
         sa.Column("embedding_model", sa.String(length=80), nullable=True),
         sa.Column("embedding_dimensions", sa.Integer(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),

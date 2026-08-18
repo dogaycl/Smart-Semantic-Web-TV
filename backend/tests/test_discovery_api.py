@@ -137,6 +137,31 @@ def test_semantic_search_endpoint_allows_anonymous_queries(client, db_session, m
     assert payload["results"][0]["result_type"] in {"live_program", "movie"}
 
 
+def test_semantic_search_endpoint_ignores_invalid_optional_token(client, db_session, monkeypatch):
+    _seed_catalog_and_live_data(db_session)
+    embedding_service = FakeEmbeddingService()
+    custom_service = SemanticSearchService(
+        embedding_service=embedding_service,
+        index_service=SearchIndexService(embedding_service=embedding_service),
+    )
+    custom_service.index_service.sync_documents(db=db_session)
+    monkeypatch.setattr(search_router, "search_service", custom_service)
+
+    response = client.post(
+        "/api/search/semantic",
+        headers={"Authorization": "Bearer expired-or-invalid-token"},
+        json={
+            "query": "Show me a space documentary tonight.",
+            "limit": 4,
+            "window_hours": 6,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["results"]
+
+
 def test_recommendations_endpoint_returns_explanations(client, db_session, monkeypatch):
     _seed_catalog_and_live_data(db_session)
     token = _register_user(client)

@@ -4,8 +4,10 @@ from app.models.catalog_genre import CatalogGenre
 from app.models.catalog_item import CatalogItem
 from app.models.channel import Channel
 from app.models.epg_entry import EPGEntry
+from app.models.playback_source import PlaybackSource
 from app.models.user import User
 from app.models.user_profile import UserProfile
+from app.models.watch_history import WatchHistory
 from app.schemas.planner import ViewingPlanGenerateRequest, ViewingPlannerLLMItem, ViewingPlannerLLMResponse
 from app.services.planner.service import ViewingPlannerService
 from app.services.recommendations.service import RecommendationService
@@ -63,6 +65,7 @@ def _create_catalog_item(
     genres: list[str],
     popularity: float = 120.0,
     content_type: str = "movie",
+    has_playback: bool = True,
 ):
     item = CatalogItem(
         slug=slug,
@@ -89,6 +92,17 @@ def _create_catalog_item(
     db_session.flush()
     for index, genre in enumerate(genres, start=1):
         db_session.add(CatalogGenre(content_item_id=item.id, tmdb_genre_id=index, name=genre))
+    if has_playback:
+        db_session.add(
+            PlaybackSource(
+                content_item_id=item.id,
+                name="Test Source",
+                source_type="mp4",
+                playback_url="https://example.com/video.mp4",
+                is_primary=True,
+                is_active=True,
+            )
+        )
     db_session.commit()
     db_session.refresh(item)
     return item
@@ -103,6 +117,7 @@ def _create_live_program(
     category: str,
     start_time: datetime,
     duration_minutes: int = 60,
+    stream_status: str = "healthy",
 ):
     channel = Channel(
         slug=slug,
@@ -115,8 +130,8 @@ def _create_live_program(
         stream_url="https://example.com/live.m3u8",
         quality="HD",
         is_active=True,
-        stream_status="healthy",
-        live_status="live",
+        stream_status=stream_status,
+        live_status="live" if stream_status == "healthy" else "unavailable",
     )
     db_session.add(channel)
     db_session.flush()
@@ -152,7 +167,7 @@ def _build_service(fake_llm):
 
 def _default_payload(**overrides) -> ViewingPlanGenerateRequest:
     payload = {
-        "plan_date": date(2026, 8, 15),
+        "plan_date": date(2026, 8, 17),
         "available_start": time(19, 0),
         "available_end": time(23, 0),
         "timezone": "UTC",
@@ -199,7 +214,7 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
     )
     _create_live_program(
         db_session,
@@ -207,8 +222,45 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         title="Late Night Special",
         description="Starts after the requested window.",
         category="Documentary",
-        start_time=datetime(2026, 8, 15, 23, 10, tzinfo=timezone.utc),
+        start_time=datetime(2026, 8, 17, 23, 10, tzinfo=timezone.utc),
     )
+    _create_live_program(
+        db_session,
+        slug="broken-live",
+        title="Broken Channel Bulletin",
+        description="Channel is currently unhealthy and must not be recommended.",
+        category="Documentary",
+        start_time=datetime(2026, 8, 17, 19, 30, tzinfo=timezone.utc),
+        stream_status="unavailable",
+    )
+    unplayable_movie = _create_catalog_item(
+        db_session,
+        slug="no-playback-source",
+        title="No Playback Source",
+        overview="A documentary with no real playback source configured.",
+        runtime_minutes=90,
+        genres=["Documentary"],
+        has_playback=False,
+    )
+    already_watched_movie = _create_catalog_item(
+        db_session,
+        slug="already-watched",
+        title="Already Watched",
+        overview="A documentary the user has already finished watching.",
+        runtime_minutes=90,
+        genres=["Documentary", "Technology"],
+    )
+    db_session.add(
+        WatchHistory(
+            user_id=user.id,
+            content_id=already_watched_movie.slug,
+            content_type="content",
+            watch_position_seconds=5400,
+            total_watched_duration_seconds=5400,
+            is_completed=True,
+        )
+    )
+    db_session.commit()
 
     index_service.sync_documents(db=db_session)
     window = service._build_window(payload=payload, user=user)
@@ -221,6 +273,8 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         window_end=window.window_end,
     )
     candidates = service._select_candidates(
+        db=db_session,
+        user=user,
         payload=payload,
         window=window,
         profile=profile,
@@ -233,6 +287,9 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
     assert f"epg:{in_window_program.channel_id}:{in_window_program.source}:{in_window_program.external_id}" in candidate_ids
     assert "catalog:epic-marathon" not in candidate_ids
     assert not any("late-night-live" in candidate_id for candidate_id in candidate_ids)
+    assert not any("broken-live" in candidate_id for candidate_id in candidate_ids)
+    assert f"catalog:{unplayable_movie.slug}" not in candidate_ids
+    assert f"catalog:{already_watched_movie.slug}" not in candidate_ids
 
 
 def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_session):
@@ -240,15 +297,15 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         summary="First draft",
         plan=[
             ViewingPlannerLLMItem(
-                candidate_id="epg:1:xmltv:science-live-2026-08-15T19:00:00+00:00",
-                planned_start=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 19, 40, tzinfo=timezone.utc),
+                candidate_id="epg:1:xmltv:science-live-2026-08-17T19:00:00+00:00",
+                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 19, 40, tzinfo=timezone.utc),
                 reason="Wrong live range",
             ),
             ViewingPlannerLLMItem(
                 candidate_id="catalog:tech-frontiers",
-                planned_start=datetime(2026, 8, 15, 19, 30, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 21, 0, tzinfo=timezone.utc),
+                planned_start=datetime(2026, 8, 17, 19, 30, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 21, 0, tzinfo=timezone.utc),
                 reason="Overlaps and uses the wrong duration",
             ),
         ],
@@ -257,15 +314,15 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         summary="Technology evening plan",
         plan=[
             ViewingPlannerLLMItem(
-                candidate_id="epg:1:xmltv:science-live-2026-08-15T19:00:00+00:00",
-                planned_start=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
+                candidate_id="epg:1:xmltv:science-live-2026-08-17T19:00:00+00:00",
+                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
                 reason="Start with the live science bulletin.",
             ),
             ViewingPlannerLLMItem(
                 candidate_id="catalog:tech-frontiers",
-                planned_start=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 22, 0, tzinfo=timezone.utc),
+                planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc),
                 reason="Then continue with a full-length technology documentary.",
             ),
         ],
@@ -292,7 +349,7 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
     )
     index_service.sync_documents(db=db_session)
 
@@ -301,8 +358,8 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
     assert result.generation_source == "gemini"
     assert result.llm_repair_applied is True
     assert [item.title for item in result.items] == ["Science Tonight", "Tech Frontiers"]
-    assert result.items[0].planned_start == datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc)
-    assert result.items[1].planned_end == datetime(2026, 8, 15, 22, 0, tzinfo=timezone.utc)
+    assert result.items[0].planned_start == datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc)
+    assert result.items[1].planned_end == datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc)
 
 
 def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
@@ -311,8 +368,8 @@ def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
         plan=[
             ViewingPlannerLLMItem(
                 candidate_id="catalog:not-real",
-                planned_start=datetime(2026, 8, 15, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
+                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
                 reason="Not real.",
             )
         ],
@@ -322,8 +379,8 @@ def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
         plan=[
             ViewingPlannerLLMItem(
                 candidate_id="catalog:not-real-again",
-                planned_start=datetime(2026, 8, 15, 20, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 15, 21, 0, tzinfo=timezone.utc),
+                planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                planned_end=datetime(2026, 8, 17, 21, 0, tzinfo=timezone.utc),
                 reason="Still not real.",
             )
         ],

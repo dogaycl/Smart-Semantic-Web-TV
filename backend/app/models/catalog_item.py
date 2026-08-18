@@ -64,3 +64,9 @@ class CatalogItem(Base):
         cascade="all, delete-orphan",
         order_by="CatalogVideo.official.desc(), CatalogVideo.published_at.desc()",
     )
+    playback_sources = relationship(
+        "PlaybackSource",
+        back_populates="content_item",
+        cascade="all, delete-orphan",
+        order_by="PlaybackSource.is_primary.desc(), PlaybackSource.name.asc()",
+    )
