@@ -1,4 +1,4 @@
-import { api } from "../services/api.js?v=26";
+import { api } from "../services/api.js?v=28";
 import { ContentCard, mediaBackground } from "../components/ContentCard.js?v=21";
 import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
 import { addComment, getComments, getRatings, likeComment, rateContent } from "../services/userDataService.js";

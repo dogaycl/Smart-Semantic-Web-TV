@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import httpx
@@ -14,7 +15,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def validation_exception_handler(_, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "Validation error.", "errors": exc.errors()},
+            content={"detail": "Validation error.", "errors": jsonable_encoder(exc.errors())},
         )
 
     @app.exception_handler(httpx.HTTPError)

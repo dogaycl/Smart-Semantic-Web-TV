@@ -14,6 +14,8 @@ from app.services.recommendations.service import RecommendationService
 from app.services.search.index_service import SearchIndexService
 from tests.test_discovery_services import FakeEmbeddingService
 
+TODAY = date.today()
+
 
 class FakeLLMService:
     def __init__(self, *responses):
@@ -167,7 +169,7 @@ def _build_service(fake_llm):
 
 def _default_payload(**overrides) -> ViewingPlanGenerateRequest:
     payload = {
-        "plan_date": date(2026, 8, 17),
+        "plan_date": date.today(),
         "available_start": time(19, 0),
         "available_end": time(23, 0),
         "timezone": "UTC",
@@ -214,7 +216,7 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
     )
     _create_live_program(
         db_session,
@@ -222,7 +224,7 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         title="Late Night Special",
         description="Starts after the requested window.",
         category="Documentary",
-        start_time=datetime(2026, 8, 17, 23, 10, tzinfo=timezone.utc),
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 23, 10, tzinfo=timezone.utc),
     )
     _create_live_program(
         db_session,
@@ -230,7 +232,7 @@ def test_planner_candidate_selection_excludes_unavailable_and_too_long_content(d
         title="Broken Channel Bulletin",
         description="Channel is currently unhealthy and must not be recommended.",
         category="Documentary",
-        start_time=datetime(2026, 8, 17, 19, 30, tzinfo=timezone.utc),
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 30, tzinfo=timezone.utc),
         stream_status="unavailable",
     )
     unplayable_movie = _create_catalog_item(
@@ -297,15 +299,15 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         summary="First draft",
         plan=[
             ViewingPlannerLLMItem(
-                candidate_id="epg:1:xmltv:science-live-2026-08-17T19:00:00+00:00",
-                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 19, 40, tzinfo=timezone.utc),
+                candidate_id=f"epg:1:xmltv:science-live-{TODAY.isoformat()}T19:00:00+00:00",
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 40, tzinfo=timezone.utc),
                 reason="Wrong live range",
             ),
             ViewingPlannerLLMItem(
                 candidate_id="catalog:tech-frontiers",
-                planned_start=datetime(2026, 8, 17, 19, 30, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 21, 0, tzinfo=timezone.utc),
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 30, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 21, 0, tzinfo=timezone.utc),
                 reason="Overlaps and uses the wrong duration",
             ),
         ],
@@ -314,15 +316,15 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         summary="Technology evening plan",
         plan=[
             ViewingPlannerLLMItem(
-                candidate_id="epg:1:xmltv:science-live-2026-08-17T19:00:00+00:00",
-                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                candidate_id=f"epg:1:xmltv:science-live-{TODAY.isoformat()}T19:00:00+00:00",
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
                 reason="Start with the live science bulletin.",
             ),
             ViewingPlannerLLMItem(
                 candidate_id="catalog:tech-frontiers",
-                planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc),
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 22, 0, tzinfo=timezone.utc),
                 reason="Then continue with a full-length technology documentary.",
             ),
         ],
@@ -349,7 +351,7 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
     )
     index_service.sync_documents(db=db_session)
 
@@ -358,8 +360,8 @@ def test_planner_repairs_invalid_llm_schedule_once_then_accepts_valid_result(db_
     assert result.generation_source == "gemini"
     assert result.llm_repair_applied is True
     assert [item.title for item in result.items] == ["Science Tonight", "Tech Frontiers"]
-    assert result.items[0].planned_start == datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc)
-    assert result.items[1].planned_end == datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc)
+    assert result.items[0].planned_start == datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc)
+    assert result.items[1].planned_end == datetime(TODAY.year, TODAY.month, TODAY.day, 22, 0, tzinfo=timezone.utc)
 
 
 def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
@@ -368,8 +370,8 @@ def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
         plan=[
             ViewingPlannerLLMItem(
                 candidate_id="catalog:not-real",
-                planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
                 reason="Not real.",
             )
         ],
@@ -379,8 +381,8 @@ def test_planner_rejects_invalid_gemini_ids_and_uses_fallback(db_session):
         plan=[
             ViewingPlannerLLMItem(
                 candidate_id="catalog:not-real-again",
-                planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
-                planned_end=datetime(2026, 8, 17, 21, 0, tzinfo=timezone.utc),
+                planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
+                planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 21, 0, tzinfo=timezone.utc),
                 reason="Still not real.",
             )
         ],

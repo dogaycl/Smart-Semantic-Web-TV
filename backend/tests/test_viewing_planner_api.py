@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from app.api.routers import viewing_plans as viewing_plans_router
 from app.schemas.planner import ViewingPlannerLLMItem, ViewingPlannerLLMResponse
@@ -12,6 +12,8 @@ from tests.test_viewing_planner_service import (
 )
 from app.services.recommendations.service import RecommendationService
 from app.services.search.index_service import SearchIndexService
+
+TODAY = date.today()
 
 
 def _register_user(client):
@@ -45,7 +47,7 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
         title="Science Tonight",
         description="Live science bulletin.",
         category="Documentary",
-        start_time=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
     )
     token = _register_user(client)
 
@@ -58,14 +60,14 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
             plan=[
                 ViewingPlannerLLMItem(
                     candidate_id=f"epg:{channel.id}:{entry.source}:{entry.external_id}",
-                    planned_start=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
-                    planned_end=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
+                    planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
                     reason="Start with the live science bulletin.",
                 ),
                 ViewingPlannerLLMItem(
                     candidate_id="catalog:tech-frontiers",
-                    planned_start=datetime(2026, 8, 17, 20, 0, tzinfo=timezone.utc),
-                    planned_end=datetime(2026, 8, 17, 22, 0, tzinfo=timezone.utc),
+                    planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 22, 0, tzinfo=timezone.utc),
                     reason="Follow it with a technology documentary.",
                 ),
             ],
@@ -81,7 +83,7 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
     monkeypatch.setattr(viewing_plans_router, "viewing_planner_service", custom_service)
 
     payload = {
-        "plan_date": str(date(2026, 8, 17)),
+        "plan_date": str(date.today()),
         "available_start": str(time(19, 0)),
         "available_end": str(time(23, 0)),
         "timezone": "UTC",
@@ -119,3 +121,31 @@ def test_generate_viewing_plan_endpoint_persists_and_lists_plans(client, db_sess
     detail_payload = detail_response.json()
     assert detail_payload["summary"] == "API planner result"
     assert detail_payload["items"][0]["candidate_id"].startswith("epg:")
+
+
+def test_generate_viewing_plan_returns_clean_400_for_past_plan_date(client, db_session):
+    # Regression test: ViewingPlanGenerateRequest.validate_request() raises a plain
+    # ValueError for a past plan_date. Pydantic's RequestValidationError.errors() embeds
+    # that raw exception in each error's ctx, which the default JSONResponse encoder
+    # cannot serialize - this used to crash the request with a 500 instead of a 400.
+    token = _register_user(client)
+    payload = {
+        "plan_date": str(TODAY - timedelta(days=1)),
+        "available_start": str(time(19, 0)),
+        "available_end": str(time(23, 0)),
+        "timezone": "UTC",
+        "preferred_categories": ["Documentary"],
+        "include_live": True,
+        "include_vod": True,
+    }
+
+    response = client.post(
+        "/api/viewing-plans/generate",
+        headers={"Authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["detail"] == "Validation error."
+    assert "plan_date cannot be in the past" in data["errors"][0]["msg"]

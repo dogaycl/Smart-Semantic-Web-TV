@@ -14,7 +14,7 @@ from app.services.llm.base import LLMService
 
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT_MS = 20_000
+REQUEST_TIMEOUT_MS = 45_000
 RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
 
 ResponseSchema = TypeVar("ResponseSchema", bound=BaseModel)

@@ -1,4 +1,4 @@
-import { router } from "./router.js?v=27";
+import { router } from "./router.js?v=29";
 
 router.start().catch((error) => {
   console.error("Router bootstrap failed.", error);

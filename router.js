@@ -3,22 +3,22 @@ import { AppLayout } from "./components/AppLayout.js?v=25";
 import { ensureFavoritesLoaded } from "./services/favoritesService.js?v=21";
 import { LoginPage } from "./pages/LoginPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
-import { HomePage } from "./pages/HomePage.js?v=21";
+import { HomePage } from "./pages/HomePage.js?v=23";
 import { LiveTvPage } from "./pages/LiveTvPage.js?v=26";
 import { LibraryPage } from "./pages/LibraryPage.js?v=26";
 import { OnDemandPage } from "./pages/OnDemandPage.js";
 import { DiscoverPage } from "./pages/DiscoverPage.js";
-import { ContentDetailPage } from "./pages/ContentDetailPage.js?v=21";
+import { ContentDetailPage } from "./pages/ContentDetailPage.js?v=23";
 import { WatchPage } from "./pages/WatchPage.js";
 import { WatchPartyPage } from "./pages/WatchPartyPage.js";
-import { MyListPage } from "./pages/MyListPage.js?v=21";
+import { MyListPage } from "./pages/MyListPage.js?v=23";
 import { ProfilePage } from "./pages/ProfilePage.js";
 import { ProfilesPage } from "./pages/ProfilesPage.js";
 import { StatsPage } from "./pages/StatsPage.js";
 import { AdminPage } from "./pages/AdminPage.js";
 import { SocialPage } from "./pages/SocialPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
-import { MyChannelPage } from "./pages/MyChannelPage.js?v=25";
+import { MyChannelPage } from "./pages/MyChannelPage.js?v=27";
 import { AITuningPage } from "./pages/AITuningPage.js";
 
 const routes = [

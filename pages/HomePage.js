@@ -1,4 +1,4 @@
-import { api } from "../services/api.js?v=26";
+import { api } from "../services/api.js?v=28";
 import { HeroBanner } from "../components/HeroBanner.js";
 import { ContentRow } from "../components/ContentRow.js";
 import { ContentCard } from "../components/ContentCard.js?v=21";

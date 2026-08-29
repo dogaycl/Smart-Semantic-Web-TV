@@ -33,13 +33,13 @@ function normalizeErrorMessage(payload, fallback) {
   return fallback;
 }
 
-export async function apiRequest(path, { method = "GET", body, token, headers = {} } = {}) {
+export async function apiRequest(path, { method = "GET", body, token, headers = {}, timeoutMs = 20000 } = {}) {
   let response;
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   const timeout = controller
     ? window.setTimeout(() => {
       controller.abort();
-    }, 20000)
+    }, timeoutMs)
     : null;
 
   try {
@@ -662,7 +662,8 @@ export const api = {
     const plan = await apiRequest("/api/viewing-plans/generate", {
       method: "POST",
       token,
-      body: payload
+      body: payload,
+      timeoutMs: 120000
     });
     return normalizeViewingPlan(plan);
   },
@@ -692,7 +693,8 @@ export const api = {
     const plan = await apiRequest("/api/my-channel/generate", {
       method: "POST",
       token,
-      body: payload
+      body: payload,
+      timeoutMs: 120000
     });
     return normalizeViewingPlan(plan);
   },
