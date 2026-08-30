@@ -304,7 +304,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/TRT_Haber_Eyl%C3%BCl_2020_Logo.svg/960px-TRT_Haber_Eyl%C3%BCl_2020_Logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.HABER.tr",
+        # The plain "TRT.HABER.tr" feed id currently carries zero programmes; the HD variant is
+        # the one the source actually populates. Verified against the live TR3 XMLTV dump.
+        epg_channel_id="TRT.HABER.HD.tr",
     ),
     ChannelSeed(
         slug="trt-1",
@@ -320,7 +322,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TRT_1_logo_%282021-%29.svg/960px-TRT_1_logo_%282021-%29.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.1.tr",
+        # "TRT.1.tr" carries zero programmes in the current TR3 dump; "TRT1.HD.tr" is populated.
+        epg_channel_id="TRT1.HD.tr",
     ),
     ChannelSeed(
         slug="trt-muzik",
@@ -353,6 +356,112 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/TRT_Belgesel_logo_%282019-%29.svg/960px-TRT_Belgesel_logo_%282019-%29.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
         epg_channel_id="TRT.BELGESEL.HD.tr",
+    ),
+    # TRT is Turkiye's public broadcaster and publishes these streams openly on its own CDN.
+    # Every URL below was verified end to end with the same 3-stage HLS check the health
+    # service uses (master manifest -> variant playlist -> first segment, CORS required at
+    # each level), and each has real programme data in the TR3 XMLTV feed.
+    ChannelSeed(
+        slug="trt-2",
+        name="TRT 2",
+        description="Turkiye's public broadcaster arts and culture channel with film, literature, and documentary programming.",
+        category="General TV",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trt2.medya.trt.com.tr/master.m3u8",
+        ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/TRT_2_logo_%282019-%29.svg/960px-TRT_2_logo_%282019-%29.svg.png",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.2.tr",
+    ),
+    ChannelSeed(
+        slug="trt-spor",
+        name="TRT Spor",
+        description="Turkiye's public broadcaster sports channel covering domestic leagues, athletics, and international competition.",
+        category="Sports",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtspor1.medya.trt.com.tr/master.m3u8",
+            "https://tv-trtspor2.medya.trt.com.tr/master.m3u8",
+        ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/TRT_Spor_logo_%282021-%29.svg/960px-TRT_Spor_logo_%282021-%29.svg.png",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.SPOR.tr",
+    ),
+    ChannelSeed(
+        slug="trt-cocuk",
+        name="TRT Cocuk",
+        description="Turkiye's public broadcaster children's channel with cartoons and educational programming.",
+        category="Youth",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtcocuk.medya.trt.com.tr/master.m3u8",
+        ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/TRT_%C3%87ocuk_logo_%282019-%29.svg/960px-TRT_%C3%87ocuk_logo_%282019-%29.svg.png",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.ÇOCUK.HD.tr",
+    ),
+    ChannelSeed(
+        slug="trt-genc",
+        name="TRT Genc",
+        description="Turkiye's public broadcaster youth channel with music, culture, and student-focused programming.",
+        category="Youth",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtgenc.medya.trt.com.tr/master.m3u8",
+        ],
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.GENÇ.tr",
+    ),
+    ChannelSeed(
+        slug="trt-avaz",
+        name="TRT Avaz",
+        description="Turkiye's public broadcaster channel for the Balkans, Caucasus, and Central Asia.",
+        category="General TV",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtavaz.medya.trt.com.tr/master.m3u8",
+        ],
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.AVAZ.tr",
+    ),
+    ChannelSeed(
+        slug="trt-turk",
+        name="TRT Turk",
+        description="Turkiye's public broadcaster international channel for Turkish audiences abroad.",
+        category="General TV",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtturk.medya.trt.com.tr/master.m3u8",
+        ],
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.TÜRK.tr",
+    ),
+    ChannelSeed(
+        slug="trt-kurdi",
+        name="TRT Kurdi",
+        description="Turkiye's public broadcaster Kurdish-language channel with news, culture, and drama.",
+        category="General TV",
+        country="TR",
+        language="tr",
+        source_type="hls",
+        preferred_stream_urls=[
+            "https://tv-trtkurdi.medya.trt.com.tr/master.m3u8",
+        ],
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_channel_id="TRT.KURDİ.tr",
     ),
     ChannelSeed(
         slug="bloomberg-ht",
@@ -432,64 +541,69 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
         epg_channel_id="DREAM.TÜRK.TV.tr",
     ),
-    # --- Turkish channels whose direct HLS stream is real but browser-CORS-blocked (their CDN
-    # does not send Access-Control-Allow-Origin, and proxying around that is out of scope - see
-    # PART 4/25 of the original task notes). Re-checked against the real YouTube Data API once
-    # YOUTUBE_API_KEY was configured: each has a genuine, resolvable official YouTube channel, so
-    # they are wired as youtube-sourced instead of left permanently inactive. The existing
-    # provider already reports "offline" (not "broken") whenever no live/upcoming broadcast is
-    # found, so this stays honest either way - no fake stream is substituted.
+    # --- Turkish channels kept defined but DISABLED. Their direct HLS stream is browser-CORS
+    # blocked (their CDN sends no Access-Control-Allow-Origin, and proxying around that is
+    # explicitly out of scope), and a re-check against the official YouTube Data API - run
+    # *without* the videoEmbeddable filter, so this is not an embedding restriction - found no
+    # live broadcast of any kind on their official channels. There is therefore no legitimate
+    # source to play, and substituting an unverified third-party relay is not acceptable.
+    # They stay in the catalog as a record of the investigation, but are inactive so the Live TV
+    # list is not padded with entries that can never play. Re-enable if an official stream appears.
     ChannelSeed(
         slug="atv-tr",
         name="ATV",
-        description="Turkish free-to-air general entertainment channel. Direct HLS stream is CORS-blocked; official YouTube channel verified reachable but had no live/upcoming broadcast at last check.",
+        description="Turkish free-to-air general entertainment channel. Disabled: direct HLS is CORS-blocked and the official YouTube channel carries no live broadcast.",
         category="General TV",
         country="TR",
         language="tr",
         source_type="youtube",
+        is_active=False,
         youtube_handle="@atvturkiye",
         logo_url="https://i.imgur.com/HyVUwFC.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="ATV.tr",
+        epg_channel_id="ATV.HD.tr",
     ),
     ChannelSeed(
         slug="kanal-d",
         name="Kanal D",
-        description="Turkish free-to-air general entertainment channel. Direct HLS stream is CORS-blocked; official YouTube channel verified reachable but had no live/upcoming broadcast at last check.",
+        description="Turkish free-to-air general entertainment channel. Disabled: direct HLS is CORS-blocked and the official YouTube channel carries no live broadcast.",
         category="General TV",
         country="TR",
         language="tr",
         source_type="youtube",
+        is_active=False,
         youtube_handle="@kanald",
         logo_url="https://i.imgur.com/9o1atM6.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="KANAL.D.tr",
+        epg_channel_id="KANAL.D.HD.tr",
     ),
     ChannelSeed(
         slug="star-tv",
         name="Star TV",
-        description="Turkish free-to-air general entertainment channel. Direct HLS stream is CORS-blocked; official YouTube channel verified reachable but had no live/upcoming broadcast at last check.",
+        description="Turkish free-to-air general entertainment channel. Disabled: direct HLS is CORS-blocked and the official YouTube channel carries no live broadcast.",
         category="General TV",
         country="TR",
         language="tr",
         source_type="youtube",
+        is_active=False,
         youtube_handle="@StarTVResmi",
         logo_url="https://i.imgur.com/9O3DHRB.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="STAR.TV.tr",
+        epg_channel_id="STAR.TV.HD.tr",
     ),
     ChannelSeed(
         slug="tv8-tr",
         name="TV8",
-        description="Turkish free-to-air general entertainment channel. Direct HLS stream is CORS-blocked; official YouTube channel verified reachable but had no live/upcoming broadcast at last check.",
+        description="Turkish free-to-air general entertainment channel. Disabled: direct HLS is CORS-blocked and the official YouTube channel carries no live broadcast.",
         category="General TV",
         country="TR",
         language="tr",
         source_type="youtube",
+        is_active=False,
         youtube_handle="@TV8",
         logo_url="https://upload.wikimedia.org/wikipedia/tr/thumb/6/68/Tv8_Yeni_Logo.png/960px-Tv8_Yeni_Logo.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TV8.tr",
+        epg_channel_id="TV8.HD.tr",
     ),
     ChannelSeed(
         slug="ntv-tr",
@@ -502,7 +616,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         youtube_handle="@NTV",
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/NTV_%28Turkey%29_logo.svg/960px-NTV_%28Turkey%29_logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="NTV.tr",
+        # "NTV.tr" carries zero programmes in the current TR3 dump; the HD id has ~295.
+        epg_channel_id="NTV.HD.tr",
     ),
     # --- Turkish channels with no legitimate open HLS candidate found (their real stream is
     # app/DRM-gated or only served through an unverified third-party relay). These stay defined
@@ -519,7 +634,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         youtube_handle="@cnnturk",
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/CNN_T%C3%BCrk_logo.svg/960px-CNN_T%C3%BCrk_logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="CNN.TÜRK.tr",
+        # "CNN.TÜRK.tr" carries zero programmes in the current TR3 dump; the HD id is populated.
+        epg_channel_id="CNN.TÜRK.HD.tr",
     ),
     ChannelSeed(
         slug="show-tv-youtube",
@@ -532,21 +648,13 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         youtube_handle="@ShowTV",
         logo_url="https://i.imgur.com/1l7SCCu.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="SHOW.TV.tr",
+        # "SHOW.TV.tr" carries zero programmes in the current TR3 dump; the HD id is populated.
+        epg_channel_id="SHOW.TV.HD.tr",
     ),
-    ChannelSeed(
-        slug="trt-spor-youtube",
-        name="TRT Spor",
-        description="Turkiye's public broadcaster sports channel. The only HLS candidate found was served from an unverified third-party relay rather than TRT's own domain, so it was not used; requires YOUTUBE_API_KEY to activate official YouTube coverage instead.",
-        category="Sports",
-        country="TR",
-        language="tr",
-        source_type="youtube",
-        youtube_handle="@trtspor",
-        logo_url="https://i.imgur.com/6tv0zxh.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.SPOR.tr",
-    ),
+    # NOTE: the former "trt-spor-youtube" seed was removed. TRT Spor now has a verified official
+    # TRT HLS stream (see the "trt-spor" seed above), which plays directly in the browser instead
+    # of depending on a YouTube channel that carries no live broadcast. Dropping the slug here
+    # deactivates the old row on the next channel sync.
     # --- Additional international channels (Sports/Music/Youth/News diversity, all verified) ---
     ChannelSeed(
         slug="dw-english",

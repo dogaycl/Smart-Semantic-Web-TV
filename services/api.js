@@ -174,6 +174,7 @@ function normalizeViewingPlanItem(item) {
     genres: item.genres || [],
     runtimeMinutes: item.runtime_minutes,
     runtimeDisplay: item.runtime_display || "Scheduled",
+    epgEntryId: item.epg_entry_id || null,
     plannedStart: item.planned_start,
     plannedEnd: item.planned_end,
     availabilityStart: item.availability_start,
@@ -206,6 +207,8 @@ function normalizeViewingPlan(plan) {
     generationSource: plan.generation_source,
     llmModel: plan.llm_model || null,
     llmRepairApplied: Boolean(plan.llm_repair_applied),
+    isAccepted: Boolean(plan.is_accepted),
+    acceptedAt: plan.accepted_at || null,
     createdAt: plan.created_at,
     updatedAt: plan.updated_at,
     items: (plan.items || []).map(normalizeViewingPlanItem)
@@ -571,10 +574,12 @@ export const api = {
     });
     return (payload.results || []).map(normalizeDiscoveryResult);
   },
-  async getLiveTv({ windowHours = 4, slotMinutes = 60 } = {}) {
-    const start = new Date();
-    start.setMinutes(0, 0, 0);
-    const end = new Date(start.getTime() + (windowHours * 60 * 60 * 1000));
+  async getLiveTv({ windowHours = 4, slotMinutes = 60, startIso = null, endIso = null } = {}) {
+    const start = startIso ? new Date(startIso) : new Date();
+    if (!startIso) {
+      start.setMinutes(0, 0, 0);
+    }
+    const end = endIso ? new Date(endIso) : new Date(start.getTime() + (windowHours * 60 * 60 * 1000));
     const query = new URLSearchParams({
       start: start.toISOString(),
       end: end.toISOString(),
@@ -712,6 +717,28 @@ export const api = {
       throw new ApiError("You are not authenticated.", 401);
     }
     const payload = await apiRequest(`/api/my-channel/${planId}`, {
+      token
+    });
+    return normalizeViewingPlan(payload);
+  },
+  async acceptMyChannelPlan(planId) {
+    const token = getStoredToken();
+    if (!token) {
+      throw new ApiError("You are not authenticated.", 401);
+    }
+    const payload = await apiRequest(`/api/my-channel/${planId}/accept`, {
+      method: "POST",
+      token
+    });
+    return normalizeViewingPlan(payload);
+  },
+  async getActiveMyChannelPlan(planDate = null) {
+    const token = getStoredToken();
+    if (!token) return null;
+    const query = buildQuery({
+      plan_date: planDate
+    });
+    const payload = await apiRequest(query ? `/api/my-channel/active?${query}` : "/api/my-channel/active", {
       token
     });
     return normalizeViewingPlan(payload);

@@ -41,12 +41,17 @@ class SearchIndexService:
     def ensure_ready(self, *, db: Session) -> None:
         if not self.settings.search_index_auto_sync:
             return
-        self.sync_documents(db=db)
+        # Request-time callers need a fresh index shape more than they need every newly seen
+        # document to block on an external embedding call. Full embedding sync is still available
+        # through the explicit sync command; the request path stays responsive and falls back to
+        # lexical/recommendation signals for any newly indexed documents until embeddings are filled.
+        has_existing_index = bool(self.search_repository.list_active(db=db))
+        self.sync_documents(db=db, populate_embeddings=not has_existing_index)
 
     def embedding_enabled(self) -> bool:
         return self.embedding_service.is_configured()
 
-    def sync_documents(self, *, db: Session) -> list[SearchDocument]:
+    def sync_documents(self, *, db: Session, populate_embeddings: bool = True) -> list[SearchDocument]:
         configure_pgvector_support(db.get_bind())
         now = datetime.now(timezone.utc)
         existing = {document.source_key: document for document in self.search_repository.list_all(db=db)}
@@ -93,7 +98,7 @@ class SearchIndexService:
             if source_key not in active_source_keys:
                 db.delete(document)
 
-        if self.embedding_service.is_configured():
+        if populate_embeddings and self.embedding_service.is_configured():
             for document, title, text in documents_to_embed:
                 try:
                     embedding = self.embedding_service.embed_document(title=title, text=text)

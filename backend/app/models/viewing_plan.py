@@ -25,6 +25,8 @@ class ViewingPlan(Base):
     generation_source: Mapped[str] = mapped_column(String(24), nullable=False, default="fallback", server_default="fallback")
     llm_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     llm_repair_applied: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0")
+    is_accepted: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0", index=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

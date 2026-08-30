@@ -2,7 +2,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
-LiveStatus = Literal["live", "upcoming", "offline", "unavailable", "unknown"]
+# "check_failed" means the provider could not determine the state (quota exhausted, timeout,
+# upstream 5xx). It is deliberately distinct from "offline"/"unavailable", which are real
+# answers about the channel - callers must preserve the previous known state instead of
+# downgrading a working channel because of a transient provider error.
+LiveStatus = Literal["live", "upcoming", "offline", "unavailable", "check_failed", "unknown"]
 
 
 @dataclass(slots=True)

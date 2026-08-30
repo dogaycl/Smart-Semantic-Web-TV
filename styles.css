@@ -1548,6 +1548,36 @@ kbd {
   margin: 0;
 }
 
+.planner-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.planner-result-note,
+.my-channel-window-preview {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.planner-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.planner-status-pill.accepted {
+  background: rgba(31, 177, 108, 0.18);
+  color: #8ef0b9;
+}
+
 .planner-plan-list,
 .planner-saved-list {
   display: grid;
@@ -1581,6 +1611,11 @@ kbd {
   text-align: left;
   cursor: pointer;
   font: inherit;
+}
+
+.planner-saved-button.is-accepted {
+  border-color: rgba(31, 177, 108, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(31, 177, 108, 0.22);
 }
 
 .planner-plan-time {
@@ -2599,7 +2634,8 @@ kbd {
 }
 
 .epg-now-tag,
-.epg-next-tag {
+.epg-next-tag,
+.epg-plan-tag {
   display: inline-block;
   font-size: 10px;
   font-weight: 800;
@@ -2617,6 +2653,20 @@ kbd {
 .epg-next-tag {
   background: rgba(255, 255, 255, 0.14);
   color: var(--text);
+}
+
+.epg-plan-tag {
+  background: rgba(31, 177, 108, 0.18);
+  color: #8ef0b9;
+}
+
+.epg-plan-match {
+  background: rgba(31, 177, 108, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(31, 177, 108, 0.28);
+}
+
+.epg-channel-planned {
+  box-shadow: inset 3px 0 0 rgba(31, 177, 108, 0.58);
 }
 
 .live-embed,

@@ -1,7 +1,7 @@
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=29";
 import { VideoPlayer, cleanupVideoPlayer, mountVideoPlayer } from "../components/VideoPlayer.js?v=22";
 import { ChannelList } from "../components/ChannelList.js?v=23";
-import { EPGGuide } from "../components/EPGGuide.js?v=25";
+import { EPGGuide } from "../components/EPGGuide.js?v=26";
 import { startChannelWatchParty } from "./WatchPartyPage.js";
 
 const LIVE_TV_FILTERS = ["All", "News", "Sports", "Music", "Entertainment", "Youth", "Documentary", "Technology", "Business", "Education", "General TV"];
@@ -24,6 +24,32 @@ const PREFERRED_LIVE_CHANNELS = [
 ];
 
 let liveTvRequestId = 0;
+
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+function todayDateValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function liveTvWindow(activePlan) {
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  const end = new Date(start.getTime() + (4 * 60 * 60 * 1000));
+
+  if (!activePlan?.isAccepted || activePlan.planDate !== todayDateValue()) {
+    return { startIso: start.toISOString(), endIso: end.toISOString() };
+  }
+
+  const acceptedStart = new Date(activePlan.availableStart);
+  const acceptedEnd = new Date(activePlan.availableEnd);
+  return {
+    startIso: new Date(Math.min(start.getTime(), acceptedStart.getTime())).toISOString(),
+    endIso: new Date(Math.max(end.getTime(), acceptedEnd.getTime())).toISOString()
+  };
+}
 
 function renderPlayerMessage(badge, title, message) {
   return `
@@ -141,7 +167,8 @@ export function LiveTvPage() {
     );
 
     try {
-      const payload = await api.getLiveTv();
+      const acceptedPlan = await api.getActiveMyChannelPlan().catch(() => null);
+      const payload = await api.getLiveTv(liveTvWindow(acceptedPlan));
       if (requestId !== liveTvRequestId) return;
 
       let channels = annotateChannels(payload);
@@ -158,7 +185,7 @@ export function LiveTvPage() {
           "Run the live TV sync and try again."
         );
         document.querySelector("#liveChannels").innerHTML = ChannelList([]);
-        document.querySelector("#epgMount").innerHTML = EPGGuide(epg, null);
+        document.querySelector("#epgMount").innerHTML = EPGGuide(epg, null, acceptedPlan);
         return;
       }
 
@@ -193,7 +220,7 @@ export function LiveTvPage() {
             "Choose another category or language to browse the curated live TV catalog."
           );
           document.querySelector("#liveChannels").innerHTML = ChannelList([]);
-          document.querySelector("#epgMount").innerHTML = EPGGuide({ ...epg, channels: [] }, null);
+          document.querySelector("#epgMount").innerHTML = EPGGuide({ ...epg, channels: [] }, null, acceptedPlan);
           bindFilterButtons(render);
           return;
         }
@@ -264,7 +291,7 @@ export function LiveTvPage() {
         document.querySelector("#livePlayer").innerHTML = VideoPlayer(selectedChannel);
         document.querySelector("#liveWatchPartyActions").innerHTML = renderWatchPartyAction(selectedChannel);
         document.querySelector("#liveChannels").innerHTML = ChannelList(visibleChannels, selectedChannel.id);
-        document.querySelector("#epgMount").innerHTML = EPGGuide(filteredEpg, selectedChannel.id);
+        document.querySelector("#epgMount").innerHTML = EPGGuide(filteredEpg, selectedChannel.id, acceptedPlan);
         await mountVideoPlayer(selectedChannel, {
           onPlaybackFailure: async (message) => {
             await tryNextChannel(message);

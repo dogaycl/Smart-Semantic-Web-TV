@@ -127,3 +127,125 @@ def test_hls_stream_provider_reports_http_failure(monkeypatch):
 
     assert result.is_available is False
     assert result.error == "HTTP 404"
+
+
+def test_youtube_provider_reuses_known_video_id_without_paying_for_a_search(monkeypatch):
+    # Regression test: search.list costs 100 YouTube quota units against a 10,000/day default,
+    # while videos.list costs 1. Re-searching every channel on every health sweep exhausted the
+    # quota within the hour, which is what made every YouTube channel read "Unavailable".
+    provider = YouTubeLiveProvider()
+    called_paths: list[str] = []
+
+    def fake_get(path, *, params):
+        called_paths.append(path)
+        if path == "/videos":
+            assert params["id"] == "cached-live-video"
+            return {
+                "items": [
+                    {
+                        "snippet": {
+                            "title": "NTV Canli Yayin",
+                            "liveBroadcastContent": "live",
+                            "thumbnails": {"high": {"url": "https://img.example.com/live.jpg"}},
+                        },
+                        "status": {"embeddable": True},
+                        "liveStreamingDetails": {"actualStartTime": "2026-08-15T10:00:00Z"},
+                    }
+                ]
+            }
+        raise AssertionError(f"Unexpected path: {path}")
+
+    monkeypatch.setattr(provider, "_get", fake_get)
+
+    event = provider.get_live_event(
+        youtube_handle="@NTV",
+        youtube_channel_id="UC-ntv",
+        known_video_id="cached-live-video",
+    )
+
+    assert event.live_status == "live"
+    assert event.video_id == "cached-live-video"
+    assert called_paths == ["/videos"], "a still-live cached video must not trigger search.list"
+
+
+def test_youtube_provider_falls_back_to_search_when_cached_video_ended(monkeypatch):
+    provider = YouTubeLiveProvider()
+    called_paths: list[str] = []
+
+    def fake_get(path, *, params):
+        called_paths.append(path)
+        if path == "/videos" and params["id"] == "stale-video":
+            return {
+                "items": [
+                    {
+                        "snippet": {"title": "Yesterday's stream", "liveBroadcastContent": "none"},
+                        "status": {"embeddable": True},
+                        "liveStreamingDetails": {
+                            "actualStartTime": "2026-08-14T10:00:00Z",
+                            "actualEndTime": "2026-08-14T12:00:00Z",
+                        },
+                    }
+                ]
+            }
+        if path == "/channels":
+            return {"items": [{"id": "UC-ntv", "snippet": {"thumbnails": {}}}]}
+        if path == "/search":
+            return {"items": [{"id": {"videoId": "fresh-live-video"}}]}
+        if path == "/videos":
+            return {
+                "items": [
+                    {
+                        "snippet": {"title": "Live now", "liveBroadcastContent": "live"},
+                        "status": {"embeddable": True},
+                        "liveStreamingDetails": {"actualStartTime": "2026-08-15T10:00:00Z"},
+                    }
+                ]
+            }
+        raise AssertionError(f"Unexpected path: {path}")
+
+    monkeypatch.setattr(provider, "_get", fake_get)
+
+    event = provider.get_live_event(
+        youtube_handle="@NTV", youtube_channel_id="UC-ntv", known_video_id="stale-video"
+    )
+
+    assert event.live_status == "live"
+    assert event.video_id == "fresh-live-video"
+    assert "/search" in called_paths, "an ended cached video must fall back to a real search"
+
+
+def test_youtube_provider_reports_quota_exhaustion_as_check_failed(monkeypatch):
+    # A 429 means "we could not check", not "the channel is offline". Treating it as an answer
+    # permanently marked healthy channels unavailable until the next sweep.
+    provider = YouTubeLiveProvider()
+
+    def fake_get(path, *, params):
+        request = httpx.Request("GET", "https://www.googleapis.com/youtube/v3/search")
+        response = httpx.Response(429, request=request, text="quota exceeded")
+        raise httpx.HTTPStatusError("429 Too Many Requests", request=request, response=response)
+
+    monkeypatch.setattr(provider, "_get", fake_get)
+
+    event = provider.get_live_event(youtube_handle="@NTV", youtube_channel_id=None)
+
+    assert event.live_status == "check_failed"
+
+
+def test_youtube_provider_redacts_api_key_from_error_text(monkeypatch):
+    # channel.stream_error is returned to every client by GET /api/channels, and raw httpx
+    # errors embed the full request URL including key=<YOUTUBE_API_KEY>.
+    provider = YouTubeLiveProvider()
+    monkeypatch.setattr(provider.settings, "youtube_api_key", "SUPER-SECRET-KEY-VALUE")
+
+    def fake_get(path, *, params):
+        raise httpx.ConnectError(
+            "failed for url 'https://www.googleapis.com/youtube/v3/search"
+            "?channelId=UC-x&key=SUPER-SECRET-KEY-VALUE'"
+        )
+
+    monkeypatch.setattr(provider, "_get", fake_get)
+
+    event = provider.get_live_event(youtube_handle="@NTV", youtube_channel_id=None)
+
+    assert "SUPER-SECRET-KEY-VALUE" not in (event.description or "")
+    assert "<redacted>" in (event.description or "")

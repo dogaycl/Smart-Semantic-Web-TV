@@ -1201,7 +1201,7 @@ Request:
 
 ```json
 {
-  "plan_date": "2026-08-17",
+  "plan_date": "2026-08-31",
   "available_start": "19:00:00",
   "available_end": "23:00:00",
   "timezone": "Europe/Istanbul",
@@ -1215,7 +1215,7 @@ Request:
 
 Notes:
 
-- `plan_date` cannot be in the past. Because the current date is `2026-08-16`, a date like `2026-08-15` is invalid, while `2026-08-17` is valid.
+- `plan_date` cannot be in the past. Because the current date is `2026-08-30`, a date like `2026-08-29` is invalid, while a date like `2026-08-31` is valid.
 - `max_duration_minutes` is optional, but when provided it cannot exceed the requested availability window.
 - At least one of `include_live` or `include_vod` must be `true`.
 - The backend will validate Gemini output and may fall back deterministically if the LLM output is invalid or unavailable.
@@ -1225,10 +1225,10 @@ Success response `201`:
 ```json
 {
   "id": 7,
-  "plan_date": "2026-08-17",
+  "plan_date": "2026-08-31",
   "timezone": "Europe/Istanbul",
-  "available_start": "2026-08-17T16:00:00Z",
-  "available_end": "2026-08-17T20:00:00Z",
+  "available_start": "2026-08-31T16:00:00Z",
+  "available_end": "2026-08-31T20:00:00Z",
   "max_duration_minutes": 180,
   "include_live": true,
   "include_vod": true,
@@ -1242,10 +1242,12 @@ Success response `201`:
   "generation_source": "gemini",
   "llm_model": "gemini-3.6-flash",
   "llm_repair_applied": false,
+  "is_accepted": false,
+  "accepted_at": null,
   "items": [
     {
       "id": 31,
-      "candidate_id": "epg:4:xmltv:ai-tonight-2026-08-17T16:00:00Z",
+      "candidate_id": "epg:4:xmltv:ai-tonight-2026-08-31T16:00:00Z",
       "result_type": "live_program",
       "title": "AI Tonight",
       "description": "Live technology documentary coverage about robotics and space.",
@@ -1253,10 +1255,11 @@ Success response `201`:
       "genres": ["Documentary"],
       "runtime_minutes": 60,
       "runtime_display": "60m",
-      "planned_start": "2026-08-17T16:00:00Z",
-      "planned_end": "2026-08-17T17:00:00Z",
-      "availability_start": "2026-08-17T16:00:00Z",
-      "availability_end": "2026-08-17T17:00:00Z",
+      "epg_entry_id": 884,
+      "planned_start": "2026-08-31T16:00:00Z",
+      "planned_end": "2026-08-31T17:00:00Z",
+      "availability_start": "2026-08-31T16:00:00Z",
+      "availability_end": "2026-08-31T17:00:00Z",
       "recommendation_score": 0.8441,
       "reason": "Start with the live science bulletin while it is available.",
       "poster_url": "https://example.com/channel-logo.jpg",
@@ -1280,8 +1283,9 @@ Success response `201`:
       "genres": ["Documentary", "Science Fiction"],
       "runtime_minutes": 120,
       "runtime_display": "2h",
-      "planned_start": "2026-08-17T17:00:00Z",
-      "planned_end": "2026-08-17T19:00:00Z",
+      "epg_entry_id": null,
+      "planned_start": "2026-08-31T17:00:00Z",
+      "planned_end": "2026-08-31T19:00:00Z",
       "availability_start": null,
       "availability_end": null,
       "recommendation_score": 0.7812,
@@ -1292,8 +1296,8 @@ Success response `201`:
       "channel": null
     }
   ],
-  "created_at": "2026-08-16T13:05:00Z",
-  "updated_at": "2026-08-16T13:05:00Z"
+  "created_at": "2026-08-30T13:05:00Z",
+  "updated_at": "2026-08-30T13:05:00Z"
 }
 ```
 
@@ -1318,10 +1322,10 @@ Success response `200`:
   "items": [
     {
       "id": 7,
-      "plan_date": "2026-08-17",
+      "plan_date": "2026-08-31",
       "timezone": "Europe/Istanbul",
-      "available_start": "2026-08-17T16:00:00Z",
-      "available_end": "2026-08-17T20:00:00Z",
+      "available_start": "2026-08-31T16:00:00Z",
+      "available_end": "2026-08-31T20:00:00Z",
       "max_duration_minutes": 180,
       "include_live": true,
       "include_vod": true,
@@ -1334,9 +1338,11 @@ Success response `200`:
       "generation_source": "gemini",
       "llm_model": "gemini-3.6-flash",
       "llm_repair_applied": false,
+      "is_accepted": true,
+      "accepted_at": "2026-08-30T13:07:00Z",
       "items": [],
-      "created_at": "2026-08-16T13:05:00Z",
-      "updated_at": "2026-08-16T13:05:00Z"
+      "created_at": "2026-08-30T13:05:00Z",
+      "updated_at": "2026-08-30T13:05:00Z"
     }
   ]
 }
@@ -1872,6 +1878,12 @@ Behavior notes:
 
 Phase 12 renames the user-facing "AI Planner" to "My Channel" and adds an equivalent API surface under `/api/my-channel` that adapts the existing Phase 7 `ViewingPlannerService` rather than duplicating it. `/api/viewing-plans/*` keeps working unchanged; a plan created through either path is visible through both (same underlying storage).
 
+Accepted-plan persistence:
+
+- `ViewingPlanRead` now also exposes `is_accepted` and `accepted_at`
+- each live-plan item exposes `epg_entry_id` so the frontend can persistently highlight accepted My Channel broadcasts inside the real EPG
+- only one accepted My Channel plan may be active per user per `plan_date`
+
 ### `POST /api/my-channel/generate`
 
 Headers, request body, validation rules, and response shape are identical to `POST /api/viewing-plans/generate` (see Phase 7). Success response `201`, same `ViewingPlanRead` shape.
@@ -1883,6 +1895,50 @@ Identical to `GET /api/viewing-plans` - lists the authenticated user's saved pla
 ### `GET /api/my-channel/{plan_id}`
 
 Identical to `GET /api/viewing-plans/{id}`.
+
+### `GET /api/my-channel/active`
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Query parameters:
+
+- `plan_date` optional `YYYY-MM-DD`; defaults to the current server date
+
+Success response `200`:
+
+- Same shape as `POST /api/my-channel/generate`
+
+Errors:
+
+- `401` missing or invalid token
+- `404` no accepted viewing plan exists for the requested date
+
+### `POST /api/my-channel/{plan_id}/accept`
+
+Headers:
+
+```text
+Authorization: Bearer <token>
+```
+
+Behavior:
+
+- marks the selected plan as the user's active My Channel plan for its `plan_date`
+- clears `is_accepted` from any other saved plan for the same user/date
+- persists the choice so Live TV/EPG can re-highlight it after refresh/login
+
+Success response `200`:
+
+- Same shape as `POST /api/my-channel/generate`, now with `is_accepted = true` and `accepted_at` set
+
+Errors:
+
+- `401` missing or invalid token
+- `404` viewing plan not found
 
 ## Reserved for Future Phases
 

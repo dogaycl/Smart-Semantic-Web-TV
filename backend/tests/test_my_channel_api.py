@@ -104,8 +104,10 @@ def test_generate_my_channel_endpoint_reuses_the_existing_planner(client, db_ses
     generated = response.json()
     assert generated["generation_source"] == "gemini"
     assert generated["summary"] == "My Channel tonight"
+    assert generated["is_accepted"] is False
     assert len(generated["items"]) == 2
     assert generated["items"][0]["result_type"] == "live_program"
+    assert generated["items"][0]["epg_entry_id"] == entry.id
     assert generated["items"][1]["result_type"] == "movie"
 
     list_response = client.get("/api/my-channel", headers={"Authorization": f"Bearer {token}"})
@@ -176,3 +178,145 @@ def test_generate_my_channel_falls_back_deterministically_when_gemini_unavailabl
     assert generated["generation_source"] == "fallback"
     assert generated["items"]
     assert generated["items"][0]["candidate_id"] == "catalog:tech-frontiers"
+
+
+def test_accept_my_channel_keeps_one_active_plan_per_date(client, db_session, monkeypatch):
+    _create_catalog_item(
+        db_session,
+        slug="tech-frontiers",
+        title="Tech Frontiers",
+        overview="A documentary about science and future technology.",
+        runtime_minutes=120,
+        genres=["Documentary", "Technology"],
+    )
+    channel, entry = _create_live_program(
+        db_session,
+        slug="science-live",
+        title="Science Tonight",
+        description="Live science bulletin.",
+        category="Documentary",
+        start_time=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+    )
+    token = _register_user(client)
+
+    embedding_service = FakeEmbeddingService()
+    index_service = SearchIndexService(embedding_service=embedding_service)
+    recommendation_service = RecommendationService(embedding_service=embedding_service, index_service=index_service)
+    llm_service = FakeLLMService(
+        ViewingPlannerLLMResponse(
+            summary="Plan one",
+            plan=[
+                ViewingPlannerLLMItem(
+                    candidate_id=f"epg:{channel.id}:{entry.source}:{entry.external_id}",
+                    planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
+                    reason="Start live.",
+                ),
+                ViewingPlannerLLMItem(
+                    candidate_id="catalog:tech-frontiers",
+                    planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 20, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 22, 0, tzinfo=timezone.utc),
+                    reason="Then watch the documentary.",
+                ),
+            ],
+        ),
+        ViewingPlannerLLMResponse(
+            summary="Plan two",
+            plan=[
+                ViewingPlannerLLMItem(
+                    candidate_id="catalog:tech-frontiers",
+                    planned_start=datetime(TODAY.year, TODAY.month, TODAY.day, 19, 0, tzinfo=timezone.utc),
+                    planned_end=datetime(TODAY.year, TODAY.month, TODAY.day, 21, 0, tzinfo=timezone.utc),
+                    reason="Start with the documentary first.",
+                ),
+            ],
+        ),
+    )
+    custom_service = ViewingPlannerService(
+        llm_service=llm_service,
+        embedding_service=embedding_service,
+        recommendation_service=recommendation_service,
+        index_service=index_service,
+    )
+    custom_service.index_service.sync_documents(db=db_session)
+    monkeypatch.setattr(viewing_plans_router, "viewing_planner_service", custom_service)
+
+    payload = {
+        "plan_date": str(TODAY),
+        "available_start": str(time(19, 0)),
+        "available_end": str(time(23, 0)),
+        "timezone": "UTC",
+        "max_duration_minutes": 240,
+        "preferred_categories": ["Documentary"],
+        "include_live": True,
+        "include_vod": True,
+    }
+    first = client.post("/api/my-channel/generate", headers={"Authorization": f"Bearer {token}"}, json=payload)
+    second = client.post("/api/my-channel/generate", headers={"Authorization": f"Bearer {token}"}, json=payload)
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    first_id = first.json()["id"]
+    second_id = second.json()["id"]
+
+    accept_first = client.post(f"/api/my-channel/{first_id}/accept", headers={"Authorization": f"Bearer {token}"})
+    assert accept_first.status_code == 200
+    assert accept_first.json()["is_accepted"] is True
+    assert accept_first.json()["accepted_at"] is not None
+
+    active_after_first = client.get(
+        f"/api/my-channel/active?plan_date={TODAY}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert active_after_first.status_code == 200
+    assert active_after_first.json()["id"] == first_id
+
+    accept_second = client.post(f"/api/my-channel/{second_id}/accept", headers={"Authorization": f"Bearer {token}"})
+    assert accept_second.status_code == 200
+    assert accept_second.json()["id"] == second_id
+    assert accept_second.json()["is_accepted"] is True
+
+    first_detail = client.get(f"/api/my-channel/{first_id}", headers={"Authorization": f"Bearer {token}"})
+    second_detail = client.get(f"/api/my-channel/{second_id}", headers={"Authorization": f"Bearer {token}"})
+    assert first_detail.status_code == 200
+    assert second_detail.status_code == 200
+    assert first_detail.json()["is_accepted"] is False
+    assert second_detail.json()["is_accepted"] is True
+
+    active_after_second = client.get(
+        f"/api/my-channel/active?plan_date={TODAY}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert active_after_second.status_code == 200
+    assert active_after_second.json()["id"] == second_id
+
+
+def test_active_my_channel_returns_404_when_no_plan_is_accepted(client, db_session, monkeypatch):
+    _create_catalog_item(
+        db_session,
+        slug="tech-frontiers",
+        title="Tech Frontiers",
+        overview="A documentary about science and future technology.",
+        runtime_minutes=100,
+        genres=["Documentary", "Technology"],
+    )
+    token = _register_user(client)
+
+    embedding_service = FakeEmbeddingService()
+    index_service = SearchIndexService(embedding_service=embedding_service)
+    recommendation_service = RecommendationService(embedding_service=embedding_service, index_service=index_service)
+    custom_service = ViewingPlannerService(
+        llm_service=FakeLLMService(RuntimeError("Gemini offline")),
+        embedding_service=embedding_service,
+        recommendation_service=recommendation_service,
+        index_service=index_service,
+    )
+    custom_service.index_service.sync_documents(db=db_session)
+    monkeypatch.setattr(viewing_plans_router, "viewing_planner_service", custom_service)
+
+    response = client.get(
+        f"/api/my-channel/active?plan_date={TODAY}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404

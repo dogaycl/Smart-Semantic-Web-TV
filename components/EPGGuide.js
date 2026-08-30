@@ -25,7 +25,21 @@ function nextEntryAfterNow(entries, now, liveEntry) {
     .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))[0] || null;
 }
 
-export function EPGGuide(epg, selectedChannelId) {
+function acceptedPlanKeys(activePlan) {
+  if (!activePlan?.isAccepted) return new Set();
+  return new Set(
+    (activePlan.items || [])
+      .filter((item) => item.resultType === "live_program")
+      .map((item) => item.epgEntryId || item.candidateId)
+      .filter(Boolean)
+  );
+}
+
+function entryPlanKey(entry) {
+  return entry.id || `epg:${entry.channel_id}:${entry.source}:${entry.external_id}`;
+}
+
+export function EPGGuide(epg, selectedChannelId, activePlan = null) {
   const slots = epg?.slots || [];
   const channels = epg?.channels || [];
   if (!slots.length || !channels.length) {
@@ -42,11 +56,12 @@ export function EPGGuide(epg, selectedChannelId) {
     const slotEnd = new Date(slots[index + 1] || epg.end);
     return now >= slotStart && now < slotEnd;
   });
+  const plannedEntryKeys = acceptedPlanKeys(activePlan);
 
   const gridColumns = `180px repeat(${slots.length}, minmax(150px, 1fr))`;
   return `
     <section class="epg">
-      <div class="section-head"><h2>EPG</h2><span class="muted">External XMLTV / YouTube schedule${nowSlotIndex >= 0 ? " &middot; NOW column highlighted" : ""}</span></div>
+      <div class="section-head"><h2>EPG</h2><span class="muted">External XMLTV / YouTube schedule${nowSlotIndex >= 0 ? " &middot; NOW column highlighted" : ""}${plannedEntryKeys.size ? " &middot; My Channel highlighted" : ""}</span></div>
       <div class="epg-grid">
         <div class="epg-grid-inner" style="grid-template-columns:${gridColumns}">
           <div class="epg-cell epg-head">Channel</div>
@@ -58,8 +73,9 @@ export function EPGGuide(epg, selectedChannelId) {
           ${channels.map(({ channel, entries }) => {
             const liveEntry = entries.find((entry) => isEntryLiveNow(entry, now)) || null;
             const nextEntry = nextEntryAfterNow(entries, now, liveEntry);
+            const channelHasPlan = entries.some((entry) => plannedEntryKeys.has(entryPlanKey(entry)));
             return `
-              <div class="epg-cell ${channel.id === selectedChannelId ? "epg-channel-active" : ""}">
+              <div class="epg-cell ${channel.id === selectedChannelId ? "epg-channel-active" : ""} ${channelHasPlan ? "epg-channel-planned" : ""}">
                 <strong>${channel.name}</strong><br><small class="muted">${[channel.category || channel.source_type, channel.language ? String(channel.language).toUpperCase() : null, channel.country].filter(Boolean).join(" • ")}</small>
               </div>
               ${slots.map((slot, index) => {
@@ -71,10 +87,12 @@ export function EPGGuide(epg, selectedChannelId) {
                   return `<div class="epg-cell epg-empty ${isNowColumn ? "epg-now-column" : ""}"><strong>Schedule unavailable</strong><br><span class="epg-time">No verified listing for this slot</span></div>`;
                 }
                 const liveNow = entry === liveEntry;
+                const isPlanned = plannedEntryKeys.has(entryPlanKey(entry));
                 const badge = liveNow
                   ? '<span class="epg-now-tag">NOW</span><br>'
                   : (entry === nextEntry ? '<span class="epg-next-tag">NEXT</span><br>' : "");
-                return `<div class="epg-cell ${channel.id === selectedChannelId ? "epg-channel-active" : ""} ${liveNow ? "epg-now-column" : ""}">${badge}<strong>${entry.title}</strong><br><span class="epg-time">${formatEntryTime(entry)}</span></div>`;
+                const planBadge = isPlanned ? '<span class="epg-plan-tag">MY CHANNEL</span><br>' : "";
+                return `<div class="epg-cell ${channel.id === selectedChannelId ? "epg-channel-active" : ""} ${liveNow ? "epg-now-column" : ""} ${isPlanned ? "epg-plan-match" : ""}">${planBadge}${badge}<strong>${entry.title}</strong><br><span class="epg-time">${formatEntryTime(entry)}</span></div>`;
               }).join("")}
             `;
           }).join("")}

@@ -3,7 +3,14 @@ from datetime import datetime, timedelta
 import httpx
 
 from app.core.config import get_settings
-from app.services.live_tv.providers.base import ExternalEPGEntry, ExternalLiveEvent
+from app.core.redaction import redact_secrets
+from app.services.live_tv.providers.base import ExternalEPGEntry, ExternalLiveEvent, LiveStatus
+
+# YouTube Data API quota costs: search.list = 100 units, videos.list/channels.list = 1 unit,
+# against a default 10,000 units/day. Re-searching every channel on every health sweep
+# exhausts the quota within the hour and makes every YouTube channel read "Unavailable",
+# so a known-good live video is re-verified with videos.list instead.
+TRANSIENT_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class YouTubeLiveProvider:
@@ -14,11 +21,25 @@ class YouTubeLiveProvider:
     def is_configured(self) -> bool:
         return bool(self.settings.youtube_api_key)
 
-    def get_live_event(self, *, youtube_handle: str | None, youtube_channel_id: str | None) -> ExternalLiveEvent:
+    def get_live_event(
+        self,
+        *,
+        youtube_handle: str | None,
+        youtube_channel_id: str | None,
+        known_video_id: str | None = None,
+    ) -> ExternalLiveEvent:
         if not self.is_configured():
             return ExternalLiveEvent(live_status="unavailable", description="YOUTUBE_API_KEY is not configured.")
 
         try:
+            # Cheap path (1 quota unit): a previously resolved broadcast is usually still the
+            # current one for a 24/7 simulcast, so verify it before paying for a search.
+            if known_video_id:
+                cached = self._hydrate_video(known_video_id)
+                if cached.live_status in {"live", "upcoming"}:
+                    cached.channel_id = youtube_channel_id
+                    return cached
+
             resolved_channel_id, channel_thumbnail_url = self._resolve_channel(youtube_handle=youtube_handle, youtube_channel_id=youtube_channel_id)
             if resolved_channel_id is None:
                 return ExternalLiveEvent(live_status="unavailable", description="YouTube channel could not be resolved.")
@@ -45,7 +66,10 @@ class YouTubeLiveProvider:
                 channel_thumbnail_url=channel_thumbnail_url,
             )
         except httpx.HTTPError as exc:
-            return ExternalLiveEvent(live_status="unavailable", description=str(exc))
+            return ExternalLiveEvent(
+                live_status=self._failure_status(exc),
+                description=redact_secrets(str(exc)),
+            )
 
     def list_schedule(
         self,
@@ -156,16 +180,38 @@ class YouTubeLiveProvider:
             or thumbnails.get("medium", {}).get("url")
             or thumbnails.get("default", {}).get("url")
         )
+        # Derive the state from the video itself so a cached video id can be re-verified
+        # without a search. Search-based callers still overwrite live_status explicitly.
+        broadcast = snippet.get("liveBroadcastContent")
+        if live_details.get("actualEndTime"):
+            derived_status: LiveStatus = "offline"
+        elif broadcast == "live":
+            derived_status = "live"
+        elif broadcast == "upcoming":
+            derived_status = "upcoming"
+        else:
+            derived_status = "offline"
         return ExternalLiveEvent(
             title=snippet.get("title"),
             description=snippet.get("description"),
             video_id=video_id,
+            live_status=derived_status,
             thumbnail_url=thumbnail_url,
             scheduled_start_time=self._parse_datetime(live_details.get("scheduledStartTime")),
             scheduled_end_time=self._parse_datetime(live_details.get("scheduledEndTime")),
             actual_start_time=self._parse_datetime(live_details.get("actualStartTime")),
             embed_url=f"https://www.youtube.com/embed/{video_id}?autoplay=1&playsinline=1&rel=0",
         )
+
+    @staticmethod
+    def _failure_status(exc: httpx.HTTPError) -> LiveStatus:
+        """Separate "we could not check" from "the channel is not broadcasting"."""
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code in TRANSIENT_HTTP_STATUS_CODES:
+            return "check_failed"
+        if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError)):
+            return "check_failed"
+        return "unavailable"
 
     def _get(self, path: str, *, params: dict[str, str]) -> dict:
         with httpx.Client(timeout=self.settings.live_tv_request_timeout_seconds, follow_redirects=True) as client:

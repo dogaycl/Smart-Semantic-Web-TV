@@ -8,6 +8,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.redaction import redact_secrets
 from app.models.channel import Channel
 from app.repositories.channel_repository import ChannelRepository
 from app.repositories.epg_entry_repository import EPGEntryRepository
@@ -50,6 +51,11 @@ class LiveTVSyncService:
         for slug, channel in existing_channels.items():
             if slug not in seeds:
                 channel.is_active = False
+            # Self-heal rows written before provider errors were sanitized: stream_error is
+            # surfaced by GET /api/channels and used to embed the upstream request URL,
+            # API key included.
+            if channel.stream_error:
+                channel.stream_error = redact_secrets(channel.stream_error)
 
         for slug, seed in seeds.items():
             channel = existing_channels.get(slug)
@@ -99,8 +105,17 @@ class LiveTVSyncService:
             if channel.source_type != "hls":
                 continue
             candidates = self._stream_candidates_for_channel(channel=channel, catalog=catalog, seed=seeds[channel.slug])
-            channel.stream_url = channel.stream_url or self._first_candidate_url(candidates)
-            channel.quality = channel.quality or self._quality_from_candidates(candidates)
+            candidate_urls = [candidate["url"] for candidate in candidates]
+            # Adopt catalog edits. Previously this was `channel.stream_url or ...`, which meant a
+            # stream URL already stored in the DB could never be replaced - editing the catalog
+            # silently had no effect on an existing channel. Keep the stored URL only while it is
+            # still one of the seed's candidates (it may be a resolved variant), otherwise re-point.
+            if candidate_urls and channel.stream_url not in candidate_urls:
+                channel.stream_url = self._first_candidate_url(candidates)
+                channel.quality = self._quality_from_candidates(candidates)
+            else:
+                channel.stream_url = channel.stream_url or self._first_candidate_url(candidates)
+                channel.quality = channel.quality or self._quality_from_candidates(candidates)
 
         db.commit()
         return channels
@@ -132,10 +147,13 @@ class LiveTVSyncService:
                 channel.stream_url = result.stream_url
                 channel.quality = self._quality_from_candidates(candidates) or channel.quality
                 channel.stream_status = "healthy" if result.is_available else "unavailable"
-                channel.stream_error = result.error or (
-                    "No browser-playable HLS stream candidate is currently available."
-                    if not candidates
-                    else None
+                channel.stream_error = redact_secrets(
+                    result.error
+                    or (
+                        "No browser-playable HLS stream candidate is currently available."
+                        if not candidates
+                        else None
+                    )
                 )
                 channel.live_status = "live" if result.is_available else "unavailable"
                 channel.last_checked_at = result.checked_at or now
@@ -144,6 +162,15 @@ class LiveTVSyncService:
             event = outcome
             channel.youtube_handle = seed.youtube_handle
             channel.youtube_channel_id = event.channel_id or channel.youtube_channel_id
+
+            # A failed check is not an answer about the channel. YouTube quota exhaustion
+            # (HTTP 429) used to flip every YouTube channel to "unavailable" and keep it there,
+            # which is what made the Live TV list look broken. Keep the last known good state
+            # and leave last_checked_at alone so the next sweep retries instead of trusting this.
+            if event.live_status == "check_failed":
+                channel.stream_error = redact_secrets(event.description)
+                continue
+
             channel.youtube_video_id = event.video_id
             channel.live_status = event.live_status
             channel.live_title = event.title
@@ -153,7 +180,7 @@ class LiveTVSyncService:
             channel.scheduled_start_time = event.scheduled_start_time or event.actual_start_time
             channel.scheduled_end_time = event.scheduled_end_time
             channel.stream_status = "healthy" if event.video_id and event.live_status in {"live", "upcoming"} else "unavailable"
-            channel.stream_error = None if channel.stream_status == "healthy" else event.description
+            channel.stream_error = None if channel.stream_status == "healthy" else redact_secrets(event.description)
             channel.last_checked_at = now
 
         db.commit()
@@ -177,6 +204,7 @@ class LiveTVSyncService:
             return self.youtube_provider.get_live_event(
                 youtube_handle=seed.youtube_handle,
                 youtube_channel_id=channel.youtube_channel_id,
+                known_video_id=channel.youtube_video_id,
             )
 
         max_workers = min(10, len(checkable))
@@ -247,7 +275,20 @@ class LiveTVSyncService:
             seed = seeds.get(channel.slug)
             if seed is None and channel.is_active:
                 return True
-            if seed is not None and channel.is_active != seed.is_active:
+            if seed is None:
+                continue
+            if channel.is_active != seed.is_active:
+                return True
+            # Curated metadata edits must reach existing rows too. Without these checks a
+            # re-pointed stream, a corrected EPG id, or a re-categorised channel would sit in
+            # the catalog with no effect until the database was rebuilt from scratch.
+            if channel.source_type != seed.source_type:
+                return True
+            if seed.epg_channel_id and channel.epg_channel_id != seed.epg_channel_id:
+                return True
+            if seed.epg_source_url and channel.epg_source_url != seed.epg_source_url:
+                return True
+            if seed.category and channel.category != seed.category:
                 return True
         return False
 

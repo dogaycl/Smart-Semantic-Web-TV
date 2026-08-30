@@ -29,12 +29,17 @@ class EPGService:
         window_start: datetime,
         window_end: datetime,
     ) -> None:
-        hls_channels_by_source: dict[str, list[Channel]] = defaultdict(list)
+        # Any channel with a real XMLTV mapping gets its schedule from XMLTV, regardless of how
+        # it is played back. Restricting this to source_type == "hls" previously meant a channel
+        # streamed via YouTube could never show a published schedule even when the broadcaster
+        # publishes one (NTV, for example, has hundreds of real programmes in the TR feed).
+        channels_by_source: dict[str, list[Channel]] = defaultdict(list)
         for channel in channels:
-            if channel.source_type == "hls" and channel.epg_source_url and channel.epg_channel_id:
-                hls_channels_by_source[channel.epg_source_url].append(channel)
+            if channel.epg_source_url and channel.epg_channel_id:
+                channels_by_source[channel.epg_source_url].append(channel)
 
-        for source_url, source_channels in hls_channels_by_source.items():
+        xmltv_mapped_ids: set[int] = set()
+        for source_url, source_channels in channels_by_source.items():
             try:
                 matched = self.xmltv_provider.fetch_entries(
                     source_url=source_url,
@@ -43,19 +48,34 @@ class EPGService:
                     window_end=window_end,
                 )
             except httpx.HTTPError:
-                matched = {}
+                # A failed download must not be read as "the schedule is now empty", or the
+                # prune below would wipe good data. Skip this source and keep what we have.
+                continue
             for channel in source_channels:
                 if not channel.epg_channel_id:
                     continue
+                xmltv_mapped_ids.add(channel.id)
                 self._replace_channel_entries(
                     db=db,
                     channel=channel,
                     entries=matched.get(channel.epg_channel_id, []),
                     source="xmltv",
-                    delete_from=window_start - timedelta(hours=2),
+                    # The provider filters incoming entries to exactly this window, so the
+                    # authoritative range is the window - NOT a fixed 7-day span. Pruning wider
+                    # than the fetched range deletes other days' schedules whenever a single day
+                    # is synced, which breaks EPG date navigation and orphans saved plan links.
+                    prune_start=window_start,
+                    prune_end=window_end,
                 )
 
-        youtube_channels = [channel for channel in channels if channel.source_type == "youtube"]
+        # YouTube schedules are only a fallback for channels with no published XMLTV listing.
+        # Each lookup costs ~200 YouTube quota units, so this also keeps the daily quota intact.
+        youtube_channels = [
+            channel
+            for channel in channels
+            if channel.source_type == "youtube" and channel.id not in xmltv_mapped_ids
+        ]
+        now = datetime.now(timezone.utc)
         for channel in youtube_channels:
             _, thumbnail_url, entries = self.youtube_schedule_provider.fetch_entries(
                 youtube_handle=channel.youtube_handle,
@@ -68,7 +88,10 @@ class EPGService:
                 channel=channel,
                 entries=entries,
                 source="youtube",
-                delete_from=window_start - timedelta(hours=2),
+                # This provider ignores the window and returns the whole forward schedule, so
+                # incoming really is authoritative across a wide range.
+                prune_start=now - timedelta(hours=2),
+                prune_end=now + timedelta(days=7),
             )
 
         db.commit()
@@ -117,14 +140,28 @@ class EPGService:
         end = start + timedelta(hours=hours)
         return start, end
 
-    def _replace_channel_entries(self, *, db: Session, channel: Channel, entries, source: str, delete_from: datetime) -> None:
+    def _replace_channel_entries(
+        self,
+        *,
+        db: Session,
+        channel: Channel,
+        entries,
+        source: str,
+        prune_start: datetime,
+        prune_end: datetime,
+    ) -> None:
+        """Upsert `entries` for one channel, pruning only within [prune_start, prune_end).
+
+        The prune range must match the range the caller's provider actually fetched, otherwise
+        syncing one day silently deletes the schedule for every other day.
+        """
         existing = {
             entry.external_id: entry
             for entry in self.epg_entry_repository.list_for_window(
                 db=db,
                 channel_ids=[channel.id],
-                start=delete_from,
-                end=delete_from + timedelta(days=7),
+                start=prune_start,
+                end=prune_end,
             )
             if entry.source == source
         }

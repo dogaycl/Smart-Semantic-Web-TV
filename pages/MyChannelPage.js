@@ -1,5 +1,5 @@
 import { getCurrentUser } from "../contexts/authContext.js";
-import { api } from "../services/api.js?v=28";
+import { api } from "../services/api.js?v=29";
 
 const WHEN_OPTIONS = [
   { id: "now", label: "Now" },
@@ -65,6 +65,21 @@ function computeWindow(state) {
     start = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
   }
 
+  if (state.whenMode === "custom") {
+    const [endHour, endMinute] = (state.customEnd || "22:00").split(":").map(Number);
+    const end = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate(),
+      endHour || 0,
+      endMinute || 0,
+      0,
+      0
+    );
+    const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    return { start, end, durationMinutes };
+  }
+
   let durationMinutes = state.durationMode === "custom"
     ? Math.max(15, Number(state.customDuration) || 60)
     : Number(state.durationMode);
@@ -85,6 +100,16 @@ function computeWindow(state) {
 
 function formatClock(date, timezone) {
   return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(date);
+}
+
+function formatWindow(dateStart, dateEnd, timezone) {
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    timeZone: timezone
+  }).format(dateStart);
+  return `${dateLabel} • ${formatClock(dateStart, timezone)} - ${formatClock(dateEnd, timezone)}`;
 }
 
 function typeInfo(item) {
@@ -145,10 +170,10 @@ function planItemCard(item, timezone, now) {
 
 function savedPlanRow(plan, timezone) {
   return `
-    <button class="planner-saved-button" data-plan-id="${plan.id}" type="button">
+    <button class="planner-saved-button ${plan.isAccepted ? "is-accepted" : ""}" data-plan-id="${plan.id}" type="button">
       <strong>${new Intl.DateTimeFormat("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(new Date(plan.availableStart))}</strong>
       <span>${plan.summary}</span>
-      <small>${plan.items.length} items &middot; ${plan.generationSource === "gemini" ? "Gemini" : "Fallback"}</small>
+      <small>${plan.items.length} items &middot; ${plan.generationSource === "gemini" ? "Gemini" : "Fallback"}${plan.isAccepted ? " &middot; Accepted" : ""}</small>
     </button>
   `;
 }
@@ -169,9 +194,15 @@ function renderPlan(plan, timezone) {
       <span class="eyebrow">My Channel</span>
       <h2>${plan.summary}</h2>
       <div class="planner-plan-meta">
-        <span>${formatClock(new Date(plan.availableStart), timezone)} - ${formatClock(new Date(plan.availableEnd), timezone)}</span>
+        <span>${formatWindow(new Date(plan.availableStart), new Date(plan.availableEnd), timezone)}</span>
         <span>${plan.generationSource === "gemini" ? "Gemini plan" : "Deterministic fallback"}</span>
         ${plan.llmRepairApplied ? "<span>Validated after repair</span>" : ""}
+        ${plan.isAccepted ? `<span class="planner-status-pill accepted">Accepted${plan.acceptedAt ? ` ${formatClock(new Date(plan.acceptedAt), timezone)}` : ""}</span>` : ""}
+      </div>
+      <div class="planner-result-actions">
+        ${plan.isAccepted
+          ? `<span class="planner-result-note">This is your active My Channel plan for ${plan.planDate}.</span>`
+          : `<button class="primary-button" type="button" data-accept-plan-id="${plan.id}">Accept This Lineup</button>`}
       </div>
     </div>
     <div class="planner-plan-list">
@@ -189,6 +220,7 @@ export function MyChannelPage() {
     whenMode: "tonight",
     customDate: toDateValue(new Date()),
     customStart: "19:00",
+    customEnd: "22:00",
     durationMode: "180",
     customDuration: 180,
     selectedCategories: new Set(savedCategories),
@@ -203,6 +235,7 @@ export function MyChannelPage() {
     const statusMount = document.querySelector("[data-planner-status]");
     const customWhenMount = document.querySelector("[data-when-custom]");
     const customDurationMount = document.querySelector("[data-duration-custom]");
+    const windowPreviewMount = document.querySelector("[data-my-channel-window]");
 
     const bindLiveLinks = () => {
       document.querySelectorAll("[data-planner-live-channel]").forEach((element) => {
@@ -218,6 +251,19 @@ export function MyChannelPage() {
     const drawResult = () => {
       resultMount.innerHTML = renderPlan(activePlan, timezone);
       bindLiveLinks();
+      document.querySelector("[data-accept-plan-id]")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        statusMount.textContent = "Saving this lineup as your active My Channel plan...";
+        try {
+          activePlan = await api.acceptMyChannelPlan(button.dataset.acceptPlanId);
+          await reloadPlans();
+          statusMount.textContent = "Accepted. Live TV EPG will highlight this plan.";
+        } catch (error) {
+          button.disabled = false;
+          statusMount.textContent = error.message || "This plan could not be accepted.";
+        }
+      });
     };
 
     const drawSaved = () => {
@@ -241,17 +287,23 @@ export function MyChannelPage() {
 
     const reloadPlans = async () => {
       savedPlans = await api.getMyChannelPlans().catch(() => []);
-      activePlan = activePlan || savedPlans[0] || null;
+      const acceptedPlan = savedPlans.find((plan) => plan.isAccepted) || null;
+      if (activePlan) {
+        activePlan = savedPlans.find((plan) => plan.id === activePlan.id) || acceptedPlan || savedPlans[0] || null;
+      } else {
+        activePlan = acceptedPlan || savedPlans[0] || null;
+      }
       drawResult();
       drawSaved();
     };
 
     const syncControlVisibility = () => {
       customWhenMount.hidden = state.whenMode !== "custom";
-      customDurationMount.hidden = state.durationMode !== "custom";
+      customDurationMount.hidden = state.whenMode === "custom" || state.durationMode !== "custom";
     };
 
     const drawControls = () => {
+      const { start, end, durationMinutes } = computeWindow(state);
       document.querySelectorAll("[data-when-option]").forEach((button) => {
         button.classList.toggle("active", button.dataset.whenOption === state.whenMode);
       });
@@ -262,6 +314,10 @@ export function MyChannelPage() {
         button.classList.toggle("active", state.selectedCategories.has(button.dataset.moodChip));
       });
       syncControlVisibility();
+      if (windowPreviewMount) {
+        const durationText = durationMinutes > 0 ? `${durationMinutes} min` : "Invalid window";
+        windowPreviewMount.textContent = `Window: ${formatWindow(start, end, timezone)} • ${durationText}`;
+      }
     };
 
     controlsMount.querySelectorAll("[data-when-option]").forEach((button) => {
@@ -290,12 +346,19 @@ export function MyChannelPage() {
 
     document.querySelector("[name=customDate]")?.addEventListener("change", (event) => {
       state.customDate = event.target.value;
+      drawControls();
     });
     document.querySelector("[name=customStart]")?.addEventListener("change", (event) => {
       state.customStart = event.target.value;
+      drawControls();
+    });
+    document.querySelector("[name=customEnd]")?.addEventListener("change", (event) => {
+      state.customEnd = event.target.value;
+      drawControls();
     });
     document.querySelector("[name=customDuration]")?.addEventListener("change", (event) => {
       state.customDuration = event.target.value;
+      drawControls();
     });
     document.querySelector("[name=moodText]")?.addEventListener("input", (event) => {
       state.moodText = event.target.value;
@@ -304,6 +367,10 @@ export function MyChannelPage() {
     document.querySelector("[data-my-channel-form]").addEventListener("submit", async (event) => {
       event.preventDefault();
       const { start, end, durationMinutes } = computeWindow(state);
+      if (end <= start) {
+        statusMount.textContent = "End time must be later than start time.";
+        return;
+      }
       const payload = {
         plan_date: toDateValue(start),
         available_start: toTimeValue(start),
@@ -378,6 +445,10 @@ export function MyChannelPage() {
                     <span>Start time</span>
                     <input class="input" name="customStart" type="time" value="19:00" />
                   </label>
+                  <label>
+                    <span>End time</span>
+                    <input class="input" name="customEnd" type="time" value="22:00" />
+                  </label>
                 </div>
               </label>
               <label>
@@ -391,6 +462,7 @@ export function MyChannelPage() {
                     <input class="input" name="customDuration" type="number" min="15" max="720" value="180" />
                   </label>
                 </div>
+                <p class="my-channel-window-preview" data-my-channel-window></p>
               </label>
               <label>
                 <span>What do you feel like watching?</span>

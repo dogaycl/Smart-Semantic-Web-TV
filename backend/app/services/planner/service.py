@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import logging
 from zoneinfo import ZoneInfo
@@ -222,6 +222,33 @@ class ViewingPlannerService:
         plan = self.plan_repository.get_for_user(db=db, user_id=user.id, plan_id=plan_id)
         if plan is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Viewing plan not found.")
+        return self._serialize_plan(plan)
+
+    def accept_plan(self, *, db: Session, user: User, plan_id: int) -> ViewingPlanRead:
+        plan = self.plan_repository.get_for_user(db=db, user_id=user.id, plan_id=plan_id)
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Viewing plan not found.")
+
+        self.plan_repository.clear_active_for_user_date(
+            db=db,
+            user_id=user.id,
+            plan_date=plan.plan_date,
+            keep_plan_id=plan.id,
+        )
+        plan.is_accepted = True
+        plan.accepted_at = datetime.now(timezone.utc)
+        db.commit()
+
+        stored_plan = self.plan_repository.get_for_user(db=db, user_id=user.id, plan_id=plan.id)
+        if stored_plan is None:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Accepted viewing plan could not be reloaded.")
+        return self._serialize_plan(stored_plan)
+
+    def get_active_plan(self, *, db: Session, user: User, plan_date: date | None = None) -> ViewingPlanRead:
+        target_date = plan_date or date.today()
+        plan = self.plan_repository.get_active_for_user_date(db=db, user_id=user.id, plan_date=target_date)
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No accepted viewing plan exists for the requested date.")
         return self._serialize_plan(plan)
 
     def _build_window(self, *, payload: ViewingPlanGenerateRequest, user: User) -> PlannerWindow:
@@ -708,6 +735,7 @@ class ViewingPlannerService:
                     genres=item.genres or [],
                     runtime_minutes=item.runtime_minutes,
                     runtime_display=item.runtime_display,
+                    epg_entry_id=item.epg_entry_id,
                     planned_start=self._normalize_datetime(item.planned_start),
                     planned_end=self._normalize_datetime(item.planned_end),
                     availability_start=self._normalize_datetime(item.availability_start) if item.availability_start else None,
@@ -737,6 +765,8 @@ class ViewingPlannerService:
             generation_source=plan.generation_source,
             llm_model=plan.llm_model,
             llm_repair_applied=plan.llm_repair_applied,
+            is_accepted=plan.is_accepted,
+            accepted_at=self._normalize_datetime(plan.accepted_at) if plan.accepted_at else None,
             items=items,
             created_at=self._normalize_datetime(plan.created_at),
             updated_at=self._normalize_datetime(plan.updated_at),

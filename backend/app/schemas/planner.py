@@ -64,6 +64,7 @@ class ViewingPlanItemRead(BaseModel):
     genres: list[str]
     runtime_minutes: int | None = None
     runtime_display: str
+    epg_entry_id: int | None = None
     planned_start: datetime
     planned_end: datetime
     availability_start: datetime | None = None
@@ -106,6 +107,8 @@ class ViewingPlanRead(BaseModel):
     generation_source: PlannerGenerationSource
     llm_model: str | None = None
     llm_repair_applied: bool
+    is_accepted: bool
+    accepted_at: datetime | None = None
     items: list[ViewingPlanItemRead]
     created_at: datetime
     updated_at: datetime

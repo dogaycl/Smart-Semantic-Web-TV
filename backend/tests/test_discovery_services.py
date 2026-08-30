@@ -8,6 +8,7 @@ from app.models.favorite import Favorite
 from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.models.watch_history import WatchHistory
+from app.core.config import get_settings
 from app.services.recommendations.service import RecommendationService
 from app.services.search.index_service import SearchIndexService
 from app.services.search.service import SemanticSearchService
@@ -45,6 +46,15 @@ class FakeEmbeddingService:
         if sum(vector) == 0:
             vector[0] = 0.1
         return vector
+
+
+class CountingEmbeddingService(FakeEmbeddingService):
+    def __init__(self) -> None:
+        self.document_calls = 0
+
+    def embed_document(self, *, title: str | None, text: str) -> list[float]:
+        self.document_calls += 1
+        return super().embed_document(title=title, text=text)
 
 
 def _create_catalog_item(db_session, *, slug: str, title: str, overview: str, runtime_minutes: int, genres: list[str], popularity: float = 100.0):
@@ -267,3 +277,39 @@ def test_recommendations_include_live_preference_explanation(db_session):
     assert response.results[0].title == "AI Tonight"
     assert "Live tonight" in response.results[0].explanation
     assert response.profile_summary
+
+
+def test_search_index_request_time_auto_sync_skips_new_embedding_calls_when_index_exists(db_session):
+    embedding_service = CountingEmbeddingService()
+    index_service = SearchIndexService(embedding_service=embedding_service)
+    settings = get_settings()
+    original_auto_sync = settings.search_index_auto_sync
+    settings.search_index_auto_sync = True
+    try:
+        _create_catalog_item(
+            db_session,
+            slug="movie-journey-to-space-1",
+            title="Journey to Space",
+            overview="A science documentary about space exploration and the cosmos.",
+            runtime_minutes=95,
+            genres=["Documentary", "Science Fiction"],
+            popularity=120,
+        )
+
+        index_service.sync_documents(db=db_session)
+        initial_calls = embedding_service.document_calls
+        assert initial_calls > 0
+
+        _create_channel_and_program(
+            db_session,
+            title="AI Tonight",
+            description="Live technology documentary coverage about robotics and space.",
+            category="Documentary",
+            starts_in_hours=1,
+        )
+
+        index_service.ensure_ready(db=db_session)
+
+        assert embedding_service.document_calls == initial_calls
+    finally:
+        settings.search_index_auto_sync = original_auto_sync
