@@ -29,7 +29,10 @@ def list_channels(
     category: CategoryFilter = None,
     language: LanguageFilter = None,
 ) -> list[ChannelRead]:
-    sync_service.ensure_ready(db=db, window_start=start, window_end=end)
+    # A channel's current/next programme is always "now"-relative, so this endpoint deliberately
+    # uses the default now-window rather than the caller's start/end. Forwarding a browsed EPG
+    # date here would make every guide date-change trigger a second, pointless EPG sync.
+    sync_service.ensure_ready(db=db)
     channels = channel_repository.list_active(db=db, category=category, language=language)
     return [live_tv_service.build_channel_read(channel) for channel in channels]
 

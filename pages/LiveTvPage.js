@@ -1,7 +1,14 @@
-import { api } from "../services/api.js?v=29";
+import { api } from "../services/api.js?v=31";
 import { VideoPlayer, cleanupVideoPlayer, mountVideoPlayer } from "../components/VideoPlayer.js?v=22";
 import { ChannelList } from "../components/ChannelList.js?v=23";
-import { EPGGuide } from "../components/EPGGuide.js?v=26";
+import {
+  EPGGuide,
+  captureEPGScroll,
+  cleanupEPGGuide,
+  dayKeyOf,
+  mountEPGGuide,
+  renderEPGDetail
+} from "../components/EPGGuide.js?v=28";
 import { startChannelWatchParty } from "./WatchPartyPage.js";
 
 const LIVE_TV_FILTERS = ["All", "News", "Sports", "Music", "Entertainment", "Youth", "Documentary", "Technology", "Business", "Education", "General TV"];
@@ -34,21 +41,25 @@ function todayDateValue() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-function liveTvWindow(activePlan) {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  const end = new Date(start.getTime() + (4 * 60 * 60 * 1000));
+function startOfDay(date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
 
-  if (!activePlan?.isAccepted || activePlan.planDate !== todayDateValue()) {
-    return { startIso: start.toISOString(), endIso: end.toISOString() };
-  }
+function addDays(date, amount) {
+  const value = new Date(date);
+  // Adding calendar days rather than 24h keeps day boundaries exact across DST changes.
+  value.setDate(value.getDate() + amount);
+  return value;
+}
 
-  const acceptedStart = new Date(activePlan.availableStart);
-  const acceptedEnd = new Date(activePlan.availableEnd);
-  return {
-    startIso: new Date(Math.min(start.getTime(), acceptedStart.getTime())).toISOString(),
-    endIso: new Date(Math.max(end.getTime(), acceptedEnd.getTime())).toISOString()
-  };
+// The guide always shows one full local day, so Prev/Next boundaries are exact and each day
+// can be cached under a simple key. "Today" still shows earlier programmes; the viewport just
+// opens scrolled to the current time.
+function epgDayWindow(date) {
+  const start = startOfDay(date);
+  return { start, end: addDays(start, 1) };
 }
 
 function renderPlayerMessage(badge, title, message) {
@@ -160,6 +171,7 @@ export function LiveTvPage() {
     if (!page) return;
 
     window.addEventListener("hashchange", cleanupVideoPlayer, { once: true });
+    window.addEventListener("hashchange", cleanupEPGGuide, { once: true });
     document.querySelector("#livePlayer").innerHTML = renderPlayerMessage(
       "Loading",
       "Connecting to live sources",
@@ -167,12 +179,22 @@ export function LiveTvPage() {
     );
 
     try {
-      const acceptedPlan = await api.getActiveMyChannelPlan().catch(() => null);
-      const payload = await api.getLiveTv(liveTvWindow(acceptedPlan));
+      let selectedDate = startOfDay(new Date());
+      const initialWindow = epgDayWindow(selectedDate);
+      // An expired token would otherwise reject the whole Promise.all and blank the page.
+      const [payload, initialPlan] = await Promise.all([
+        api.getLiveTv({ start: initialWindow.start, end: initialWindow.end, slotMinutes: 30 }),
+        api.getActiveMyChannelPlan(dayKeyOf(selectedDate)).catch(() => null)
+      ]);
       if (requestId !== liveTvRequestId) return;
 
+      let acceptedPlan = initialPlan;
       let channels = annotateChannels(payload);
-      const epg = payload.epg;
+      let epg = payload.epg;
+      const epgCache = new Map([[dayKeyOf(selectedDate), payload.epg]]);
+      const planCache = new Map([[dayKeyOf(selectedDate), initialPlan]]);
+      let epgRequestId = 0;
+      let epgLoading = false;
       let activeFilter = "All";
       let activeLanguage = null;
       const failedChannelIds = new Set();
@@ -185,7 +207,7 @@ export function LiveTvPage() {
           "Run the live TV sync and try again."
         );
         document.querySelector("#liveChannels").innerHTML = ChannelList([]);
-        document.querySelector("#epgMount").innerHTML = EPGGuide(epg, null, acceptedPlan);
+        document.querySelector("#epgMount").innerHTML = EPGGuide({ epg, selectedDate, activePlan: acceptedPlan });
         return;
       }
 
@@ -204,6 +226,106 @@ export function LiveTvPage() {
         return liveChannel ? { ...baseChannel, ...liveChannel } : baseChannel;
       };
 
+      const findEntry = (entryId) => {
+        for (const group of epg?.channels || []) {
+          const entry = (group.entries || []).find((candidate) => candidate.id === entryId);
+          if (entry) return { entry, channel: group.channel };
+        }
+        return null;
+      };
+
+      // Rendering the guide is separate from render(): a date change must not re-mount the video
+      // player, which would interrupt playback.
+      const renderEpg = () => {
+        const mount = document.querySelector("#epgMount");
+        if (!mount) return;
+        const visibleIds = new Set(filterChannels(channels, activeFilter, activeLanguage).map((channel) => channel.id));
+        captureEPGScroll(mount);
+        mount.innerHTML = EPGGuide({
+          epg: filterEpg(epg, visibleIds),
+          selectedChannelId,
+          activePlan: acceptedPlan,
+          selectedDate,
+          loading: epgLoading
+        });
+        mountEPGGuide(mount, {
+          onSelectDate: (token) => {
+            if (token === "today") return loadEpgForDate(startOfDay(new Date()));
+            if (token === "-1" || token === "1") return loadEpgForDate(addDays(selectedDate, Number(token)));
+            const parsed = new Date(`${token}T00:00:00`);
+            if (!Number.isNaN(parsed.getTime())) return loadEpgForDate(startOfDay(parsed));
+            return undefined;
+          },
+          onSelectEntry: (entryId) => {
+            const found = findEntry(entryId);
+            if (!found) return;
+            const planItem = (acceptedPlan?.items || []).find(
+              (item) => item.epgEntryId === entryId
+                || item.candidateId === `epg:${found.channel.id}:${found.entry.source}:${found.entry.external_id}`
+            ) || null;
+            const channel = channels.find((item) => item.id === found.channel.id) || found.channel;
+            renderEPGDetail(mount, {
+              entry: found.entry,
+              channel,
+              planItem,
+              isPlayable: channel.playback?.type !== "unavailable"
+            });
+            // Let the grounded assistant answer about any programme in the guide, not just the
+            // one currently playing.
+            assistantContext?.setAttribute("data-context-type", "program");
+            assistantContext?.setAttribute("data-epg-entry-id", String(entryId));
+            assistantContext?.setAttribute("data-channel-id", String(found.channel.id));
+            assistantContext?.setAttribute("data-context-label", `${found.entry.title} on ${found.channel.name}`);
+            document.dispatchEvent(new CustomEvent("assistant:context-changed"));
+
+            mount.querySelector("[data-epg-detail-close]")?.addEventListener("click", () => {
+              renderEPGDetail(mount, { entry: null });
+            });
+            mount.querySelector("[data-epg-watch-channel]")?.addEventListener("click", async (event) => {
+              selectedChannelId = Number(event.currentTarget.dataset.epgWatchChannel);
+              await render({ refreshSelected: true });
+            });
+          },
+          onSelectChannel: async (channelId) => {
+            if (!channelId || channelId === selectedChannelId) return;
+            selectedChannelId = channelId;
+            await render({ refreshSelected: true });
+          }
+        });
+      };
+
+      const loadEpgForDate = async (date) => {
+        const currentRequest = ++epgRequestId;
+        selectedDate = date;
+        const key = dayKeyOf(date);
+
+        if (epgCache.has(key)) {
+          epg = epgCache.get(key);
+          acceptedPlan = planCache.get(key) ?? null;
+          epgLoading = false;
+          renderEpg();
+          return;
+        }
+
+        epgLoading = true;
+        renderEpg();
+        const window_ = epgDayWindow(date);
+        const [nextEpg, nextPlan] = await Promise.all([
+          api.getEpgWindow({ start: window_.start, end: window_.end, slotMinutes: 30 }).catch(() => null),
+          api.getActiveMyChannelPlan(key).catch(() => null)
+        ]);
+        if (currentRequest !== epgRequestId) return;
+
+        epgLoading = false;
+        if (nextEpg) {
+          epgCache.set(key, nextEpg);
+          epg = nextEpg;
+        }
+        planCache.set(key, nextPlan);
+        acceptedPlan = nextPlan;
+        renderEpg();
+      };
+
       const render = async ({ refreshSelected = false } = {}) => {
         document.querySelector("#liveFilters").innerHTML = renderFilters(activeFilter, activeLanguage, channels);
         let visibleChannels = filterChannels(channels, activeFilter, activeLanguage);
@@ -220,7 +342,7 @@ export function LiveTvPage() {
             "Choose another category or language to browse the curated live TV catalog."
           );
           document.querySelector("#liveChannels").innerHTML = ChannelList([]);
-          document.querySelector("#epgMount").innerHTML = EPGGuide({ ...epg, channels: [] }, null, acceptedPlan);
+          renderEpg();
           bindFilterButtons(render);
           return;
         }
@@ -242,8 +364,6 @@ export function LiveTvPage() {
           }
         }
 
-        const visibleIds = new Set(visibleChannels.map((channel) => channel.id));
-        const filteredEpg = filterEpg(epg, visibleIds);
         const tryNextChannel = async (message) => {
           failedChannelIds.add(selectedChannel.id);
           const nextChannel = visibleChannels.find((channel) => (
@@ -291,7 +411,7 @@ export function LiveTvPage() {
         document.querySelector("#livePlayer").innerHTML = VideoPlayer(selectedChannel);
         document.querySelector("#liveWatchPartyActions").innerHTML = renderWatchPartyAction(selectedChannel);
         document.querySelector("#liveChannels").innerHTML = ChannelList(visibleChannels, selectedChannel.id);
-        document.querySelector("#epgMount").innerHTML = EPGGuide(filteredEpg, selectedChannel.id, acceptedPlan);
+        renderEpg();
         await mountVideoPlayer(selectedChannel, {
           onPlaybackFailure: async (message) => {
             await tryNextChannel(message);
@@ -312,7 +432,9 @@ export function LiveTvPage() {
           }
         });
 
-        document.querySelectorAll("[data-channel-id]").forEach((button) => {
+        // Scoped to the channel list: this selector is document-wide, and the hidden
+        // [data-assistant-context] element also carries data-channel-id.
+        document.querySelectorAll("#liveChannels [data-channel-id]").forEach((button) => {
           button.addEventListener("click", async () => {
             const channelId = Number(button.dataset.channelId);
             if (!channelId || channelId === selectedChannelId) return;

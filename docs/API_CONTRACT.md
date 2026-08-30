@@ -1940,6 +1940,62 @@ Errors:
 - `401` missing or invalid token
 - `404` viewing plan not found
 
+## Phase 13 Endpoints
+
+Phase 13 makes a generated My Channel plan a *proposal* that the user must accept, and links
+accepted live items back to real EPG rows so the Live TV guide can highlight them.
+
+### Plan lifecycle
+
+`ViewingPlanRead` gains `status`, `is_accepted`, `accepted_at`, and `superseded_at`.
+
+- `draft` - generated but never accepted. This is the state of every plan from `/generate`.
+- `active` - the user's accepted plan **for that `plan_date`**.
+- `superseded` - was active for that date, then replaced by a newer accepted plan.
+
+**One active plan per date.** Accepting plan *P* for date *D* marks any other `active` plan for
+`(user, D)` as `superseded` and leaves plans for other dates untouched, so a user can hold
+separate accepted lineups for different days. Plans are never deleted - superseded rows are
+retained as history, which is why `status` exists rather than only the `is_accepted` boolean.
+
+### `POST /api/my-channel/{plan_id}/accept`
+
+Headers: `Authorization: Bearer <token>`
+
+Success `200`: the accepted plan in the `ViewingPlanRead` shape, with `status: "active"`,
+`is_accepted: true`, and `accepted_at` set. Re-accepting an already-active plan is a no-op, so
+the call is safe to retry.
+
+Errors:
+
+- `401` missing or invalid token
+- `404` plan not found, or it belongs to another user
+
+### `GET /api/my-channel/active`
+
+Query parameters:
+
+- `plan_date` optional `YYYY-MM-DD`, defaults to today
+
+Success `200`: the active plan for that date in the `ViewingPlanRead` shape.
+
+Errors:
+
+- `401` missing or invalid token
+- `404` no accepted plan exists for the requested date (a normal state - the frontend treats it
+  as "no active plan" rather than an error)
+
+`/api/viewing-plans/*` exposes the same two routes over the same storage. In both routers
+`/active` is declared **before** `/{plan_id}`, otherwise FastAPI matches `active` as a plan id
+and fails with a 422.
+
+### `ViewingPlanItemRead.epg_entry_id`
+
+Live plan items carry `epg_entry_id`, the real `epg_entries` primary key also returned by
+`GET /api/epg`. The Live TV guide highlights planned programmes by matching this id - never by
+comparing titles. Items also keep `candidate_id` (`epg:{channel_id}:{source}:{external_id}`),
+which is durable across EPG re-syncs and is used to re-resolve a link if the row is recreated.
+
 ## Reserved for Future Phases
 
 - `/api/programs`

@@ -574,24 +574,33 @@ export const api = {
     });
     return (payload.results || []).map(normalizeDiscoveryResult);
   },
-  async getLiveTv({ windowHours = 4, slotMinutes = 60, startIso = null, endIso = null } = {}) {
-    const start = startIso ? new Date(startIso) : new Date();
-    if (!startIso) {
-      start.setMinutes(0, 0, 0);
+  async getLiveTv({ windowHours = 4, slotMinutes = 30, start = null, end = null } = {}) {
+    const windowStart = start ? new Date(start) : new Date();
+    if (!start) {
+      windowStart.setMinutes(0, 0, 0);
     }
-    const end = endIso ? new Date(endIso) : new Date(start.getTime() + (windowHours * 60 * 60 * 1000));
-    const query = new URLSearchParams({
-      start: start.toISOString(),
-      end: end.toISOString(),
-      slot_minutes: String(slotMinutes)
-    });
+    const windowEnd = end ? new Date(end) : new Date(windowStart.getTime() + (windowHours * 60 * 60 * 1000));
 
+    // /api/channels deliberately gets no window: current/next programme is always "now"-relative,
+    // and forwarding a browsed guide date would trigger a second, pointless EPG sync.
+    // The longer timeout matters because when the channel health TTL has expired this request
+    // re-checks every stream (a real network round trip each), which can outlast the 20s default.
     const [channels, epg] = await Promise.all([
-      apiRequest(`/api/channels?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`),
-      apiRequest(`/api/epg?${query.toString()}`)
+      apiRequest("/api/channels", { timeoutMs: 45000 }),
+      api.getEpgWindow({ start: windowStart, end: windowEnd, slotMinutes })
     ]);
 
     return { channels, epg };
+  },
+  async getEpgWindow({ start, end, slotMinutes = 30 } = {}) {
+    const query = new URLSearchParams({
+      start: new Date(start).toISOString(),
+      end: new Date(end).toISOString(),
+      slot_minutes: String(slotMinutes)
+    });
+    // The first request for an uncached day can trigger a cold XMLTV download server-side, which
+    // takes longer than the default 20s client timeout would allow.
+    return apiRequest(`/api/epg?${query.toString()}`, { timeoutMs: 45000 });
   },
   getChannelLive(channelId) {
     return apiRequest(`/api/channels/${channelId}/live`);
@@ -738,10 +747,11 @@ export const api = {
     const query = buildQuery({
       plan_date: planDate
     });
+    // Having no accepted plan is a normal state, so a 404 here is not an error worth surfacing.
     const payload = await apiRequest(query ? `/api/my-channel/active?${query}` : "/api/my-channel/active", {
       token
-    });
-    return normalizeViewingPlan(payload);
+    }).catch(() => null);
+    return payload ? normalizeViewingPlan(payload) : null;
   },
   async assistantChat(payload) {
     const token = getStoredToken();

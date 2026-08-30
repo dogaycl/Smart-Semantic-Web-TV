@@ -213,8 +213,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
             "https://dash2.antik.sk/live/test_trt_world_atktv/playlist.m3u8",
         ],
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.WORLD.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="TRT.WORLD.HD.tr",
     ),
     ChannelSeed(
         slug="arirang-tv",
@@ -303,10 +303,10 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trthaber.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/TRT_Haber_Eyl%C3%BCl_2020_Logo.svg/960px-TRT_Haber_Eyl%C3%BCl_2020_Logo.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # The plain "TRT.HABER.tr" feed id currently carries zero programmes; the HD variant is
         # the one the source actually populates. Verified against the live TR3 XMLTV dump.
-        epg_channel_id="TRT.HABER.HD.tr",
+        epg_channel_id="TRT.HABER.tr",
     ),
     ChannelSeed(
         slug="trt-1",
@@ -321,9 +321,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trt1.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TRT_1_logo_%282021-%29.svg/960px-TRT_1_logo_%282021-%29.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # "TRT.1.tr" carries zero programmes in the current TR3 dump; "TRT1.HD.tr" is populated.
-        epg_channel_id="TRT1.HD.tr",
+        epg_channel_id="TRT.1.tr",
     ),
     ChannelSeed(
         slug="trt-muzik",
@@ -338,7 +338,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtmuzik.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://i.imgur.com/JgUzRH8.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.MÜZİK.tr",
     ),
     ChannelSeed(
@@ -354,7 +354,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtbelgesel.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/TRT_Belgesel_logo_%282019-%29.svg/960px-TRT_Belgesel_logo_%282019-%29.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.BELGESEL.HD.tr",
     ),
     # TRT is Turkiye's public broadcaster and publishes these streams openly on its own CDN.
@@ -373,8 +373,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trt2.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/TRT_2_logo_%282019-%29.svg/960px-TRT_2_logo_%282019-%29.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.2.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        # No TRT 2 listing exists in the TR1 XMLTV dump, so no schedule is claimed.
+        epg_channel_id=None,
     ),
     ChannelSeed(
         slug="trt-spor",
@@ -389,7 +390,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtspor2.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/TRT_Spor_logo_%282021-%29.svg/960px-TRT_Spor_logo_%282021-%29.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.SPOR.tr",
     ),
     ChannelSeed(
@@ -404,7 +405,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtcocuk.medya.trt.com.tr/master.m3u8",
         ],
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/TRT_%C3%87ocuk_logo_%282019-%29.svg/960px-TRT_%C3%87ocuk_logo_%282019-%29.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.ÇOCUK.HD.tr",
     ),
     ChannelSeed(
@@ -418,8 +419,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtgenc.medya.trt.com.tr/master.m3u8",
         ],
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.GENÇ.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        # No TRT Genc listing exists in the TR1 XMLTV dump, so no schedule is claimed.
+        epg_channel_id=None,
     ),
     ChannelSeed(
         slug="trt-avaz",
@@ -432,8 +434,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtavaz.medya.trt.com.tr/master.m3u8",
         ],
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TRT.AVAZ.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="TRT.AVAZ.HD.tr",
     ),
     ChannelSeed(
         slug="trt-turk",
@@ -446,7 +448,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtturk.medya.trt.com.tr/master.m3u8",
         ],
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.TÜRK.tr",
     ),
     ChannelSeed(
@@ -460,7 +462,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtkurdi.medya.trt.com.tr/master.m3u8",
         ],
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.KURDİ.tr",
     ),
     ChannelSeed(
@@ -476,7 +478,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv.ensonhaber.com/bloomberght/bloomberght.m3u8",
         ],
         logo_url="https://i.imgur.com/bmkXfIE.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="BLOOMBERG.HT.tr",
     ),
     ChannelSeed(
@@ -492,7 +494,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv.ensonhaber.com/haberturk/haberturk.m3u8",
         ],
         logo_url="https://i.imgur.com/6Tw3rUp.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="HABERTÜRK.tr",
     ),
     ChannelSeed(
@@ -508,7 +510,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://canli.tgrthaber.com/tgrt.m3u8",
         ],
         logo_url="https://i.imgur.com/PrxwKDw.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TGRT.HABER.tr",
     ),
     ChannelSeed(
@@ -538,8 +540,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://live.duhnet.tv/S2/HLS_LIVE/dreamturknp/playlist.m3u8",
         ],
         logo_url="https://i.imgur.com/vJ8VaZi.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="DREAM.TÜRK.TV.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        # No Dream Turk listing exists in the TR1 XMLTV dump, so no schedule is claimed.
+        epg_channel_id=None,
     ),
     # --- Turkish channels kept defined but DISABLED. Their direct HLS stream is browser-CORS
     # blocked (their CDN sends no Access-Control-Allow-Origin, and proxying around that is
@@ -560,8 +563,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         is_active=False,
         youtube_handle="@atvturkiye",
         logo_url="https://i.imgur.com/HyVUwFC.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="ATV.HD.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="ATV.tr",
     ),
     ChannelSeed(
         slug="kanal-d",
@@ -574,8 +577,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         is_active=False,
         youtube_handle="@kanald",
         logo_url="https://i.imgur.com/9o1atM6.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="KANAL.D.HD.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="KANAL.D.tr",
     ),
     ChannelSeed(
         slug="star-tv",
@@ -588,8 +591,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         is_active=False,
         youtube_handle="@StarTVResmi",
         logo_url="https://i.imgur.com/9O3DHRB.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="STAR.TV.HD.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="STAR.TV.tr",
     ),
     ChannelSeed(
         slug="tv8-tr",
@@ -602,8 +605,8 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         is_active=False,
         youtube_handle="@TV8",
         logo_url="https://upload.wikimedia.org/wikipedia/tr/thumb/6/68/Tv8_Yeni_Logo.png/960px-Tv8_Yeni_Logo.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
-        epg_channel_id="TV8.HD.tr",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
+        epg_channel_id="TV8.tr",
     ),
     ChannelSeed(
         slug="ntv-tr",
@@ -615,9 +618,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         source_type="youtube",
         youtube_handle="@NTV",
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/NTV_%28Turkey%29_logo.svg/960px-NTV_%28Turkey%29_logo.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # "NTV.tr" carries zero programmes in the current TR3 dump; the HD id has ~295.
-        epg_channel_id="NTV.HD.tr",
+        epg_channel_id="NTV.tr",
     ),
     # --- Turkish channels with no legitimate open HLS candidate found (their real stream is
     # app/DRM-gated or only served through an unverified third-party relay). These stay defined
@@ -633,7 +636,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         source_type="youtube",
         youtube_handle="@cnnturk",
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/CNN_T%C3%BCrk_logo.svg/960px-CNN_T%C3%BCrk_logo.svg.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # "CNN.TÜRK.tr" carries zero programmes in the current TR3 dump; the HD id is populated.
         epg_channel_id="CNN.TÜRK.HD.tr",
     ),
@@ -647,9 +650,9 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         source_type="youtube",
         youtube_handle="@ShowTV",
         logo_url="https://i.imgur.com/1l7SCCu.png",
-        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR3.xml.gz",
+        epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # "SHOW.TV.tr" carries zero programmes in the current TR3 dump; the HD id is populated.
-        epg_channel_id="SHOW.TV.HD.tr",
+        epg_channel_id="SHOW.TV.tr",
     ),
     # NOTE: the former "trt-spor-youtube" seed was removed. TRT Spor now has a verified official
     # TRT HLS stream (see the "trt-spor" seed above), which plays directly in the browser instead

@@ -1,11 +1,14 @@
 from datetime import date
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.viewing_plan import ViewingPlan
 from app.models.viewing_plan_item import ViewingPlanItem
 
+PLAN_STATUS_DRAFT = "draft"
+PLAN_STATUS_ACTIVE = "active"
+PLAN_STATUS_SUPERSEDED = "superseded"
 
 PLAN_LOADS = (
     selectinload(ViewingPlan.items),
@@ -44,26 +47,17 @@ class ViewingPlanRepository:
         )
         return db.scalar(statement)
 
-    def clear_active_for_user_date(
-        self,
-        *,
-        db: Session,
-        user_id: int,
-        plan_date: date,
-        keep_plan_id: int | None = None,
-    ) -> None:
+    def list_active_for_user_date(self, *, db: Session, user_id: int, plan_date: date) -> list[ViewingPlan]:
         statement = (
-            update(ViewingPlan)
+            select(ViewingPlan)
+            .options(*PLAN_LOADS)
             .where(
                 ViewingPlan.user_id == user_id,
                 ViewingPlan.plan_date == plan_date,
                 ViewingPlan.is_accepted.is_(True),
             )
-            .values(is_accepted=False, accepted_at=None)
         )
-        if keep_plan_id is not None:
-            statement = statement.where(ViewingPlan.id != keep_plan_id)
-        db.execute(statement)
+        return list(db.scalars(statement).all())
 
     def create_plan(self, **kwargs) -> ViewingPlan:
         return ViewingPlan(**kwargs)

@@ -4,7 +4,7 @@ import { ensureFavoritesLoaded } from "./services/favoritesService.js?v=21";
 import { LoginPage } from "./pages/LoginPage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { HomePage } from "./pages/HomePage.js?v=23";
-import { LiveTvPage } from "./pages/LiveTvPage.js?v=27";
+import { LiveTvPage } from "./pages/LiveTvPage.js?v=30";
 import { LibraryPage } from "./pages/LibraryPage.js?v=26";
 import { OnDemandPage } from "./pages/OnDemandPage.js";
 import { DiscoverPage } from "./pages/DiscoverPage.js";
@@ -18,7 +18,7 @@ import { StatsPage } from "./pages/StatsPage.js";
 import { AdminPage } from "./pages/AdminPage.js";
 import { SocialPage } from "./pages/SocialPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
-import { MyChannelPage } from "./pages/MyChannelPage.js?v=28";
+import { MyChannelPage } from "./pages/MyChannelPage.js?v=30";
 import { AITuningPage } from "./pages/AITuningPage.js";
 
 const routes = [

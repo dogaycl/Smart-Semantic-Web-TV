@@ -1,3 +1,4 @@
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,10 @@ from app.services.live_tv.providers.hls_provider import HLSStreamProvider
 from app.services.live_tv.providers.youtube_provider import YouTubeLiveProvider
 
 DEMO_PREFERRED_COUNTRIES = ("US", "GB", "CA", "AU", "NZ", "TR")
+# Upstream XMLTV dumps publish a few days ahead; asking for anything further is pointless.
+EPG_SYNC_LOOKAHEAD_DAYS = 7
+# Share of active channels that must have entries before a window counts as "covered".
+EPG_WINDOW_COVERAGE_RATIO = 0.5
 LANGUAGE_CODE_ALIASES: dict[str, set[str]] = {
     "en": {"en", "eng"},
     "tr": {"tr", "tur"},
@@ -42,6 +47,11 @@ class LiveTVSyncService:
         self.epg_service = EPGService()
         self.hls_provider = HLSStreamProvider()
         self.youtube_provider = YouTubeLiveProvider()
+        # Guards repeated EPG downloads for days the upstream sources genuinely do not cover.
+        # This service is instantiated as a module-level singleton by the routers, so the state
+        # is shared across requests; the lock is non-blocking so a concurrent reader never waits.
+        self._epg_sync_attempts: dict[str, datetime] = {}
+        self._epg_sync_lock = threading.Lock()
 
     def sync_channels(self, *, db: Session) -> list[Channel]:
         seeds = self._enabled_seed_map()
@@ -251,15 +261,78 @@ class LiveTVSyncService:
         if window_start is None or window_end is None:
             window_start, window_end = self.epg_service.default_window(hours=self.settings.live_tv_default_epg_window_hours)
 
+        if not self._epg_window_needs_sync(db=db, window_start=window_start, window_end=window_end):
+            return
+
+        sync_start, sync_end = self._epg_sync_span(window_start, window_end)
+        self.sync_epg(db=db, window_start=sync_start, window_end=sync_end)
+
+    def _epg_window_needs_sync(self, *, db: Session, window_start: datetime, window_end: datetime) -> bool:
+        """Decide whether the requested EPG window is missing or stale enough to re-fetch.
+
+        Previously a sync only happened when the window had *zero* entries across all channels,
+        which meant navigating the guide to another date rendered an empty grid forever.
+        """
+        now = datetime.now(timezone.utc)
+        if window_start > now + timedelta(days=EPG_SYNC_LOOKAHEAD_DAYS):
+            # Beyond what the upstream dumps publish - never worth chasing.
+            return False
+
         active_channels = self.channel_repository.list_active(db=db)
-        entries = self.epg_entry_repository.list_for_window(
+        if not active_channels:
+            return False
+
+        coverage = self.epg_entry_repository.window_coverage(
             db=db,
             channel_ids=[channel.id for channel in active_channels],
             start=window_start,
             end=window_end,
         )
-        if not entries:
-            self.sync_epg(db=db, window_start=window_start, window_end=window_end)
+        ttl = timedelta(minutes=self.settings.live_tv_epg_ttl_minutes)
+        is_fresh = coverage.newest_updated_at is not None and self._as_utc(coverage.newest_updated_at) > now - ttl
+        # Requiring every channel to have entries would never be satisfiable: channels with no
+        # published listing legitimately have none, which would force a sync on every request.
+        is_covered = coverage.channel_count >= max(1, int(len(active_channels) * EPG_WINDOW_COVERAGE_RATIO))
+        if coverage.entry_count and is_covered and is_fresh:
+            return False
+
+        # Throttle genuinely uncoverable days. Each sync downloads whole multi-MB XMLTV dumps,
+        # so without this every Prev/Next click would re-download them.
+        attempt_key = window_start.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        if not self._epg_sync_lock.acquire(blocking=False):
+            # Another request is already syncing; skipping keeps this one fast.
+            return False
+        try:
+            last_attempt = self._epg_sync_attempts.get(attempt_key)
+            cooldown = timedelta(minutes=max(5, self.settings.live_tv_epg_ttl_minutes // 12))
+            if last_attempt is not None and now - last_attempt < cooldown:
+                return False
+            # Recorded before syncing so a failing source cannot spin.
+            self._epg_sync_attempts[attempt_key] = now
+            for key, attempted_at in list(self._epg_sync_attempts.items()):
+                if now - attempted_at > timedelta(days=1):
+                    self._epg_sync_attempts.pop(key, None)
+            return True
+        finally:
+            self._epg_sync_lock.release()
+
+    def _epg_sync_span(self, window_start: datetime, window_end: datetime) -> tuple[datetime, datetime]:
+        """Widen a requested window to whole UTC days before syncing.
+
+        The XMLTV dump is downloaded in full regardless of window, so parsing a slightly wider
+        slice is nearly free and keeps prune boundaries aligned to days.
+        """
+        now = datetime.now(timezone.utc)
+        start = min(window_start, now).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = (max(window_end, now) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return (
+            max(start, now - timedelta(days=1)),
+            min(end, now + timedelta(days=EPG_SYNC_LOOKAHEAD_DAYS)),
+        )
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
     def _requires_channel_resync(
         self,

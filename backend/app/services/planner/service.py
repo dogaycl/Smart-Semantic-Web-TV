@@ -16,7 +16,11 @@ from app.models.viewing_plan import ViewingPlan
 from app.repositories.catalog_repository import CatalogRepository
 from app.repositories.channel_repository import ChannelRepository
 from app.repositories.search_document_repository import SearchDocumentRepository
-from app.repositories.viewing_plan_repository import ViewingPlanRepository
+from app.repositories.viewing_plan_repository import (
+    PLAN_STATUS_ACTIVE,
+    PLAN_STATUS_SUPERSEDED,
+    ViewingPlanRepository,
+)
 from app.repositories.watch_history_repository import WatchHistoryRepository
 from app.schemas.planner import (
     ViewingPlanChannelRead,
@@ -229,15 +233,28 @@ class ViewingPlannerService:
         if plan is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Viewing plan not found.")
 
-        self.plan_repository.clear_active_for_user_date(
-            db=db,
-            user_id=user.id,
-            plan_date=plan.plan_date,
-            keep_plan_id=plan.id,
-        )
-        plan.is_accepted = True
-        plan.accepted_at = datetime.now(timezone.utc)
-        db.commit()
+        if not plan.is_accepted:
+            now = datetime.now(timezone.utc)
+            # One active plan per date: only plans for THIS plan_date are superseded, so an
+            # accepted lineup for another day stays active. Nothing is deleted - superseded
+            # plans are kept as history with their status. Per-row rather than a bulk UPDATE so
+            # objects already loaded in this session stay consistent.
+            for other in self.plan_repository.list_active_for_user_date(
+                db=db, user_id=user.id, plan_date=plan.plan_date
+            ):
+                if other.id == plan.id:
+                    continue
+                other.is_accepted = False
+                other.status = PLAN_STATUS_SUPERSEDED
+                other.superseded_at = now
+            # Flushing the supersede first keeps the partial unique index on
+            # (user_id, plan_date) WHERE is_accepted satisfied at every point.
+            db.flush()
+            plan.is_accepted = True
+            plan.status = PLAN_STATUS_ACTIVE
+            plan.accepted_at = now
+            plan.superseded_at = None
+            db.commit()
 
         stored_plan = self.plan_repository.get_for_user(db=db, user_id=user.id, plan_id=plan.id)
         if stored_plan is None:
@@ -324,9 +341,9 @@ class ViewingPlannerService:
                 else "Available in your requested window and matches the current planner filters."
             )
             planner_score = (
-                (recommendation_score * 0.65)
-                + (request_score * 0.25)
-                + (category_score * 0.10)
+                (recommendation_score * self.settings.viewing_planner_weight_recommendation)
+                + (request_score * self.settings.viewing_planner_weight_request)
+                + (category_score * self.settings.viewing_planner_weight_category)
             )
             if not payload.preference_text and not category_hints:
                 planner_score = recommendation_score
@@ -765,8 +782,10 @@ class ViewingPlannerService:
             generation_source=plan.generation_source,
             llm_model=plan.llm_model,
             llm_repair_applied=plan.llm_repair_applied,
+            status=plan.status,
             is_accepted=plan.is_accepted,
             accepted_at=self._normalize_datetime(plan.accepted_at) if plan.accepted_at else None,
+            superseded_at=self._normalize_datetime(plan.superseded_at) if plan.superseded_at else None,
             items=items,
             created_at=self._normalize_datetime(plan.created_at),
             updated_at=self._normalize_datetime(plan.updated_at),

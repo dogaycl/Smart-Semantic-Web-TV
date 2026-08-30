@@ -1,6 +1,6 @@
 import { mediaBackground } from "../components/ContentCard.js";
 import { mountPlayerAdapter, renderPlaybackSurface } from "../components/playerAdapters.js";
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 import { startCatalogWatchParty } from "./WatchPartyPage.js";
 
 let activeAdapter = null;

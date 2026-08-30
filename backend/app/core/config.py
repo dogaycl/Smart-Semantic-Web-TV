@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     recommendation_default_window_hours: int = 12
     viewing_planner_candidate_limit: int = 18
     viewing_planner_max_items: int = 6
+    # Weights for the deterministic candidate ranking that runs before Gemini sees anything.
+    # Kept here rather than inline in the service so the ranking can be tuned in one place.
+    viewing_planner_weight_recommendation: float = 0.65
+    viewing_planner_weight_request: float = 0.25
+    viewing_planner_weight_category: float = 0.10
     watch_party_host_reconnect_grace_seconds: int = 30
     watch_party_chat_history_limit: int = 40
     watch_party_chat_message_max_length: int = 400

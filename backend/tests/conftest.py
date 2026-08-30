@@ -53,6 +53,9 @@ def test_settings():
     original_recommendation_window = settings.recommendation_default_window_hours
     original_viewing_planner_candidate_limit = settings.viewing_planner_candidate_limit
     original_viewing_planner_max_items = settings.viewing_planner_max_items
+    original_planner_weight_recommendation = settings.viewing_planner_weight_recommendation
+    original_planner_weight_request = settings.viewing_planner_weight_request
+    original_planner_weight_category = settings.viewing_planner_weight_category
     original_watch_party_reconnect_grace = settings.watch_party_host_reconnect_grace_seconds
     original_watch_party_history_limit = settings.watch_party_chat_history_limit
     original_watch_party_message_limit = settings.watch_party_chat_message_max_length
@@ -112,6 +115,9 @@ def test_settings():
         settings.recommendation_default_window_hours = original_recommendation_window
         settings.viewing_planner_candidate_limit = original_viewing_planner_candidate_limit
         settings.viewing_planner_max_items = original_viewing_planner_max_items
+        settings.viewing_planner_weight_recommendation = original_planner_weight_recommendation
+        settings.viewing_planner_weight_request = original_planner_weight_request
+        settings.viewing_planner_weight_category = original_planner_weight_category
         settings.watch_party_host_reconnect_grace_seconds = original_watch_party_reconnect_grace
         settings.watch_party_chat_history_limit = original_watch_party_history_limit
         settings.watch_party_chat_message_max_length = original_watch_party_message_limit

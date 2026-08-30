@@ -1,6 +1,6 @@
 import { ContentRow } from "../components/ContentRow.js";
 import { ContentCard } from "../components/ContentCard.js";
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 
 function sortByReleaseDate(items) {
   return [...items].sort((a, b) => String(b.releaseDate || "").localeCompare(String(a.releaseDate || "")));

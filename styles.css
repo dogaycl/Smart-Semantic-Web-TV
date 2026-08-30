@@ -2596,53 +2596,240 @@ kbd {
 
 .epg {
   margin-top: 18px;
-  overflow-x: auto;
 }
 
-.epg-grid {
-  min-width: 940px;
+.epg .section-head {
+  flex-wrap: wrap;
 }
 
-.epg-grid-inner {
-  display: grid;
+.epg-datebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.epg-cell {
-  min-height: 62px;
-  padding: 10px;
-  border-right: 1px solid var(--line);
+.epg-date-input {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.epg-datebar-label {
+  font-size: 12px;
+}
+
+.epg-placeholder {
+  padding: 28px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.epg-plan-strip {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(104, 167, 255, 0.08);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Both sticky axes must resolve against the same scrollport, so this box scrolls in x and y
+   and is height-capped instead of letting the page scroll vertically. */
+.epg-viewport {
+  overflow: auto;
+  max-height: clamp(320px, 58vh, 640px);
+  border-top: 1px solid var(--line);
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+}
+
+.epg-canvas {
+  position: relative;
+  width: calc(var(--epg-channel-col) + var(--epg-width));
+}
+
+.epg-timeline {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  background: var(--panel-solid);
   border-bottom: 1px solid var(--line);
 }
 
-.epg-head {
+.epg-corner {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  flex: 0 0 var(--epg-channel-col);
+  padding: 12px 12px 10px;
+  background: var(--panel-solid);
+  border-right: 1px solid var(--line);
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
   font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.epg-empty {
+.epg-ticks {
+  position: relative;
+  flex: 0 0 var(--epg-width);
+  height: 42px;
+}
+
+.epg-tick {
+  position: absolute;
+  top: 13px;
+  height: 18px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
   color: var(--muted);
 }
 
-.epg-channel-active {
-  background: rgba(199, 122, 17, 0.12);
+.epg-tick.is-hour {
+  color: var(--text);
+  border-left-color: rgba(255, 255, 255, 0.22);
 }
 
-.epg-now-column {
+.epg-row {
+  display: flex;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 78px;
+}
+
+.epg-channel {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 var(--epg-channel-col);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 78px;
+  padding: 8px 10px;
+  background: var(--panel-solid);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.epg-channel:hover {
+  background: var(--panel-high);
+}
+
+.epg-channel.is-selected {
+  background: rgba(199, 122, 17, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.epg-channel .channel-logo {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+}
+
+.epg-channel-text {
+  min-width: 0;
+}
+
+.epg-channel-text strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epg-channel-text small {
+  font-size: 11px;
+}
+
+/* 30-minute and hourly gridlines are backgrounds, so they cost zero DOM nodes. */
+.epg-track {
+  position: relative;
+  flex: 0 0 var(--epg-width);
+  min-height: 78px;
+  border-bottom: 1px solid var(--line);
+  background-image:
+    repeating-linear-gradient(to right, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px calc(var(--epg-ppm) * 60)),
+    repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px calc(var(--epg-ppm) * 30));
+}
+
+.epg-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-high);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.epg-block:hover {
+  background: #262b38;
+}
+
+.epg-block:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.epg-block-title {
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epg-block .epg-time {
+  font-size: 11px;
+}
+
+/* LIVE owns the gold accent, My Channel owns blue - two hues so both states read at once. */
+.epg-block.is-live {
   background: rgba(199, 122, 17, 0.22);
-  box-shadow: inset 0 0 0 1px rgba(199, 122, 17, 0.45);
+  border-color: rgba(199, 122, 17, 0.45);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.epg-block.is-planned {
+  border-color: rgba(104, 167, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(104, 167, 255, 0.35);
+}
+
+.epg-block.is-live.is-planned {
+  box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px rgba(104, 167, 255, 0.45);
+}
+
+.epg-block-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .epg-now-tag,
 .epg-next-tag,
 .epg-plan-tag {
   display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-bottom: 4px;
 }
 
 .epg-now-tag {
@@ -2656,17 +2843,116 @@ kbd {
 }
 
 .epg-plan-tag {
-  background: rgba(31, 177, 108, 0.18);
-  color: #8ef0b9;
+  background: rgba(104, 167, 255, 0.18);
+  color: var(--blue);
 }
 
-.epg-plan-match {
-  background: rgba(31, 177, 108, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(31, 177, 108, 0.28);
+.epg-block.is-tight {
+  padding: 6px;
 }
 
-.epg-channel-planned {
-  box-shadow: inset 3px 0 0 rgba(31, 177, 108, 0.58);
+.epg-block.is-tight .epg-time {
+  display: none;
+}
+
+.epg-block.is-micro {
+  padding: 4px;
+}
+
+.epg-block.is-micro .epg-block-title,
+.epg-block.is-micro .epg-block-pills {
+  display: none;
+}
+
+.epg-block.is-clipped-start {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px);
+}
+
+.epg-block.is-clipped-end {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 14px);
+  mask-image: linear-gradient(to left, transparent 0, #000 14px);
+}
+
+.epg-gap {
+  background: rgba(255, 255, 255, 0.03);
+  border-style: dashed;
+  color: var(--muted);
+  cursor: default;
+  font-size: 12px;
+  justify-content: center;
+}
+
+.epg-nowline {
+  position: absolute;
+  top: 42px;
+  bottom: 0;
+  left: calc(var(--epg-channel-col) + var(--epg-now-x));
+  width: 2px;
+  background: var(--accent);
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 0 0 8px rgba(199, 122, 17, 0.65);
+}
+
+.epg-nowline::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.epg-canvas.is-other-day .epg-nowline {
+  display: none;
+}
+
+.epg-detail {
+  padding: 16px 18px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.epg-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.epg-detail-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.epg-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.epg-detail-plan {
+  margin: 0 0 8px;
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.epg-detail-description {
+  margin: 0 0 14px;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .live-embed,

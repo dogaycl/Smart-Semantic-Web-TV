@@ -1,5 +1,5 @@
 import { getCurrentUser, logout } from "../contexts/authContext.js";
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 import { Sidebar } from "./Sidebar.js?v=25";
 import { Topbar } from "./Topbar.js?v=25";
 import { AIAssistant } from "./AIAssistant.js";

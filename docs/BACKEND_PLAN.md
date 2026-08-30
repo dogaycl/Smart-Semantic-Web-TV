@@ -711,3 +711,69 @@ Once `GEMINI_API_KEY`, `TMDB_API_KEY`, and `YOUTUBE_API_KEY` were configured loc
 - Real TMDB sync populated 245 active catalog items (140 movies / 105 series) across the existing 10 curated buckets; the curated playback-catalog sync separately resolved 14 of 16 registry titles to real `PlaybackSource` rows once TMDB search actually worked.
 - Real YouTube Data API activation confirmed the existing provider already reports `offline` (not `broken`) for a resolvable channel with no current broadcast. The recovery pass keeps ATV, Kanal D, Star TV, and TV8 inactive because no legitimate working live source is available right now, while NTV remains the one officially verified Turkish YouTube-sourced news simulcast in the curated catalog.
 - A real, unmocked Gemini call against the production `ViewingPlannerService` prompt/schema confirmed `gemini-3.6-flash` works correctly with structured output on the currently-installed `google-genai` SDK; no model change was made per the explicit instruction to trust a working real API call over assumption.
+
+## Phase 13 Deliverables
+
+Three instructor-mandated improvements: a redesigned EPG, a materially better Turkish channel
+catalog, and a My Channel plan the user explicitly accepts and sees reflected in the guide.
+
+### Live TV catalog
+
+- Reworked `LiveTVSyncService`/`YouTubeLiveProvider` so a known-good live video is re-verified
+  with `videos.list` (1 quota unit) instead of `search.list` (100). The old behaviour burned the
+  10,000/day YouTube quota within the hour, after which **every** YouTube channel reported
+  "Unavailable" - this was the actual cause of the broken-looking channel list, not dead streams.
+- Added a `check_failed` live status. HTTP 429/5xx now preserve the previous known state and
+  leave `last_checked_at` untouched so the next sweep retries, instead of a transient quota blip
+  permanently marking healthy channels unavailable.
+- Added `app/core/redaction.py` and applied it to persisted provider errors. `Channel.stream_error`
+  is returned by `GET /api/channels` and previously embedded the upstream request URL including
+  `key=<YOUTUBE_API_KEY>`. `sync_channels` also re-scrubs pre-existing rows.
+- `_requires_channel_resync` now detects changed `source_type`, `epg_channel_id`,
+  `epg_source_url` and `category`, and `sync_channels` re-points a `stream_url` that is no longer
+  one of the seed's candidates. Previously catalog edits had no effect on existing rows.
+- Added seven official TRT HLS channels (TRT 2, TRT Spor, TRT Cocuk, TRT Genc, TRT Avaz,
+  TRT Turk, TRT Kurdi), each verified through the app's own three-stage HLS health check.
+- Disabled ATV, Kanal D, Star TV and TV8: their direct HLS is browser-CORS-blocked and a check
+  against the official YouTube Data API **without** the embeddable filter found no live broadcast
+  at all. They remain in the catalog as a record of the investigation.
+
+### EPG
+
+- **Prune-scope fix (data loss).** `EPGService._replace_channel_entries` pruned a fixed 7-day
+  span from the sync window while the XMLTV provider only returns entries *inside* that window,
+  so syncing a single day deleted every other day's schedule. It now prunes exactly the range the
+  caller fetched. This was a prerequisite for date navigation.
+- XMLTV now applies to any channel with an EPG mapping rather than HLS-only, so YouTube-played
+  channels (NTV, CNN Turk, Show TV) show their published schedules. The YouTube schedule provider
+  is now only a fallback for channels with no XMLTV listing, which also saves quota.
+- A failed XMLTV download no longer reads as "the schedule is empty" and no longer prunes.
+- `ensure_ready` now syncs when the *requested window* is uncovered or stale, using the
+  previously declared but unused `live_tv_epg_ttl_minutes`, with a per-day cooldown and a
+  non-blocking lock so concurrent requests do not both download.
+- Switched Turkish channels from the `TR3` XMLTV dump to `TR1`: TR3 had gone stale upstream
+  (its newest programmes were several days in the past) while TR1 is current.
+- Rewrote `components/EPGGuide.js` as a duration-proportional timeline at 4px/minute on a
+  30-minute grid, with a sticky channel column (real logos), sticky time header, live
+  current-time indicator, clamped straddling programmes, and per-day Prev/Today/Next navigation.
+
+### My Channel
+
+- `viewing_plans.status` + `superseded_at` (migration `20260830_0010`) on top of the existing
+  `is_accepted`/`accepted_at` from `20260830_0009`, so a replaced plan is distinguishable from
+  one that was never accepted.
+- One active plan **per date**; accepting supersedes only same-date plans, and nothing is deleted.
+- Planner ranking weights moved from inline literals into `Settings`
+  (`viewing_planner_weight_recommendation` / `_request` / `_category`).
+
+## Phase 13 Architecture Notes
+
+- Single-active is enforced in the service layer plus the partial unique index from 0009. A
+  status-based partial index was avoided because it is Postgres-only and the test suite runs on
+  SQLite via `Base.metadata.create_all`, so migrations get no automated coverage.
+- EPG highlighting matches on `epg_entry_id` only. `candidate_id`
+  (`epg:{channel_id}:{source}:{external_id}`) is retained as a durable fallback because
+  `epg_entry_id` is `ON DELETE SET NULL` and EPG rows are pruned on re-sync.
+- The EPG grid uses absolute positioning on a px-per-minute scale rather than CSS-grid column
+  spanning: real programmes do not align to 30-minute boundaries, and a programme clipped at the
+  window edge needs a fractional width that `grid-column: span N` cannot express.

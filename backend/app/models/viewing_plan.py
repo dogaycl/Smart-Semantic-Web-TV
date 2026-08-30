@@ -25,6 +25,16 @@ class ViewingPlan(Base):
     generation_source: Mapped[str] = mapped_column(String(24), nullable=False, default="fallback", server_default="fallback")
     llm_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     llm_repair_applied: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0")
+    # `is_accepted` is the flag a partial unique index uses to enforce one active plan per
+    # (user, plan_date). `status` records *why* a plan is not accepted: "draft" was never
+    # accepted, "superseded" was accepted and later replaced for the same date. Superseded
+    # plans are kept as history rather than deleted, so the two are maintained together.
+    is_accepted: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_accepted: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0", index=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

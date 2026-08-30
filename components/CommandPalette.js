@@ -1,4 +1,4 @@
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 
 const destinations = [
   { label: "Home", path: "/", type: "Page" },

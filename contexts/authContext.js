@@ -1,5 +1,5 @@
 import { authService } from "../services/authService.js";
-import { ApiError } from "../services/api.js";
+import { ApiError } from "../services/api.js?v=31";
 
 const AUTH_TOKEN_KEY = "synapse.auth.token";
 

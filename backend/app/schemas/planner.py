@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 PlannerResultType = Literal["movie", "series", "live_program"]
 PlannerGenerationSource = Literal["gemini", "fallback"]
+# A generated plan is only a proposal ("draft") until the user accepts it. Accepting makes it
+# "active" for its plan_date; a previously active plan for that same date becomes "superseded"
+# and is kept as history rather than deleted.
+PlannerPlanStatus = Literal["draft", "active", "superseded"]
 
 
 class ViewingPlanGenerateRequest(BaseModel):
@@ -107,8 +111,10 @@ class ViewingPlanRead(BaseModel):
     generation_source: PlannerGenerationSource
     llm_model: str | None = None
     llm_repair_applied: bool
+    status: PlannerPlanStatus = "draft"
     is_accepted: bool
     accepted_at: datetime | None = None
+    superseded_at: datetime | None = None
     items: list[ViewingPlanItemRead]
     created_at: datetime
     updated_at: datetime

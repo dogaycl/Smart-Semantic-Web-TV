@@ -1,4 +1,4 @@
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 
 function compactResult(item) {
   const metaParts = [item.duration, item.year, item.channel?.name].filter(Boolean);

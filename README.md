@@ -17,22 +17,57 @@ The repository now contains a real FastAPI backend plus a hash-routed frontend p
 
 ### Backend
 
-The backend lives under `backend/` and expects environment configuration from `.env`.
+The backend lives under `backend/` and expects environment configuration from a `.env` file in
+the repository root. Dependencies are declared in `backend/pyproject.toml`.
 
-Typical development flow:
+Prerequisites:
+
+- Python 3.12+
+- A running PostgreSQL server, and a database matching the `DATABASE_URL` in your `.env`
+
+First-time setup on a new machine:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set at minimum `DATABASE_URL` and `JWT_SECRET_KEY` (see Environment Notes).
+
+```bash
+createdb smart_semantic_web_tv
+```
 
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 alembic upgrade head
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+The first run populates channels, EPG, and the catalog from the external providers, so the
+initial requests to Live TV and On Demand take longer than later ones.
 
 Swagger / OpenAPI:
 
 - `http://127.0.0.1:8000/docs`
+
+### Populating live data manually
+
+The app syncs on demand, but these commands force a refresh:
+
+```bash
+python -m app.commands.live_tv_sync sync-channels
+```
+
+```bash
+python -m app.commands.live_tv_sync refresh-live-status
+```
+
+```bash
+python -m app.commands.live_tv_sync sync-epg --window-hours 48
+```
 
 ### Frontend
 

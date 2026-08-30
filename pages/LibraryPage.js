@@ -1,4 +1,4 @@
-import { api } from "../services/api.js";
+import { api } from "../services/api.js?v=31";
 import { ContentCard } from "../components/ContentCard.js";
 import { CategoryFilter } from "../components/CategoryFilter.js";
 
