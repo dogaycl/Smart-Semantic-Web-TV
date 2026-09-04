@@ -1,6 +1,6 @@
-import { api } from "../services/api.js?v=31";
-import { ContentCard, mediaBackground } from "../components/ContentCard.js?v=21";
-import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
+import { api } from "../services/api.js?v=55";
+import { ContentCard, mediaBackground } from "../components/ContentCard.js?v=55";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=55";
 import { addComment, getComments, getRatings, likeComment, rateContent } from "../services/userDataService.js";
 import { startCatalogWatchParty } from "./WatchPartyPage.js";
 

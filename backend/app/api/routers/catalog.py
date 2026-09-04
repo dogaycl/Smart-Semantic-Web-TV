@@ -23,7 +23,7 @@ playback_sync_service = PlaybackCatalogSyncService(
 )
 playback_service = CatalogPlaybackService(catalog_repository=catalog_repository)
 
-SortOption = Literal["popularity_desc", "rating_desc", "release_date_desc", "title_asc"]
+SortOption = Literal["popularity_desc", "rating_desc", "release_date_desc", "title_asc", "playable_desc"]
 SortParam = Annotated[SortOption, Query()]
 LimitParam = Annotated[int, Query(ge=1, le=300)]
 OffsetParam = Annotated[int, Query(ge=0)]

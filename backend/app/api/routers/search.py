@@ -23,4 +23,5 @@ def semantic_search(
         query=payload.query,
         limit=payload.limit,
         window_hours=payload.window_hours,
+        mood=payload.mood,
     )

@@ -99,7 +99,7 @@ def test_tmdb_provider_maps_movie_details_and_images(monkeypatch):
     assert item.backdrop_url == "https://image.tmdb.org/t/p/original/backdrop.jpg"
     assert item.genres == [(878, "Science Fiction"), (12, "Adventure")]
     assert item.top_cast == ["Timothee Chalamet", "Zendaya"]
-    assert item.top_crew == ["Denis Villeneuve"]
+    assert item.top_crew == ["Denis Villeneuve (Director)"]
     assert item.videos[0].video_key == "abcd1234"
     assert item.videos[0].published_at == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
 
@@ -156,6 +156,6 @@ def test_tmdb_provider_maps_tv_details_and_seasons(monkeypatch):
     assert item.number_of_seasons == 8
     assert item.number_of_episodes == 73
     assert item.top_cast == ["Emilia Clarke", "Kit Harington"]
-    assert item.top_crew[:2] == ["David Benioff", "D. B. Weiss"]
+    assert item.top_crew[:2] == ["David Benioff (Creator)", "D. B. Weiss (Creator)"]
     assert item.seasons[0].season_number == 1
     assert item.seasons[0].poster_url == "https://image.tmdb.org/t/p/w500/season1.jpg"

@@ -39,7 +39,10 @@ class ViewingPlanGenerateRequest(BaseModel):
         start_dt = datetime.combine(self.plan_date, self.available_start)
         end_dt = datetime.combine(self.plan_date, self.available_end)
         if end_dt <= start_dt:
-            raise ValueError("available_end must be later than available_start on the selected date.")
+            # A window whose end time is not after its start time is read as crossing midnight
+            # into the next day ("free from 23:00 to 02:00"). This keeps late-evening "Tonight"
+            # and "Now" requests usable instead of rejecting them.
+            end_dt += timedelta(days=1)
         if not self.include_live and not self.include_vod:
             raise ValueError("At least one of include_live or include_vod must be true.")
         window_minutes = int((end_dt - start_dt) / timedelta(minutes=1))

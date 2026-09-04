@@ -1,12 +1,12 @@
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("synapse-tv-v2").then((cache) => cache.addAll(["./", "./index.html", "./styles.css", "./app.js", "./router.js", "./manifest.webmanifest"]))
+    caches.open("synapse-tv-v8").then((cache) => cache.addAll(["./", "./index.html", "./styles.css", "./app.js", "./router.js", "./manifest.webmanifest"]))
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== "synapse-tv-v2").map((key) => caches.delete(key))))
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== "synapse-tv-v8").map((key) => caches.delete(key))))
   );
 });
 

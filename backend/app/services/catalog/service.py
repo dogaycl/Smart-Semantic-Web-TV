@@ -56,6 +56,10 @@ class CatalogService:
         genres = [genre.name for genre in item.genres]
         trailer = self._preferred_video(item.videos)
         release_date = item.release_date.isoformat() if item.release_date else None
+        is_playable = any(
+            source.is_active and source.last_error is None
+            for source in item.playback_sources
+        )
         return {
             "id": item.id,
             "slug": item.slug,
@@ -81,6 +85,7 @@ class CatalogService:
             "primary_genre": genres[0] if genres else ("Movie" if item.content_type == "movie" else "TV Series"),
             "tmdb_url": item.tmdb_url,
             "has_trailer": trailer is not None,
+            "is_playable": is_playable,
             "last_synced_at": item.last_synced_at.isoformat() if isinstance(item.last_synced_at, datetime) else None,
         }
 

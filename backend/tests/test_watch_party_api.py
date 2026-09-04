@@ -86,6 +86,30 @@ def test_watch_room_creation_returns_invite_and_host_membership(client, db_sessi
     assert payload["participants"][0]["is_host"] is True
 
 
+def test_watch_room_participant_exposes_profile_avatar(client, db_session):
+    item = _create_playable_catalog_item(db_session)
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "host",
+            "email": "host@example.com",
+            "password": "StrongPass123",
+            "display_name": "Host",
+            "avatar_url": "preset:aurora",
+        },
+    )
+    assert response.status_code == 201
+    token = response.json()["access_token"]
+
+    room_response = client.post(
+        "/api/watch-party/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"target_type": "catalog", "content_slug": item.slug},
+    )
+    assert room_response.status_code == 201
+    assert room_response.json()["participants"][0]["avatar_url"] == "preset:aurora"
+
+
 def test_watch_room_join_marks_participant_joined(client, db_session):
     item = _create_playable_catalog_item(db_session)
     host_token = _register_user(client, username="host", email="host@example.com")
@@ -108,6 +132,28 @@ def test_watch_room_join_marks_participant_joined(client, db_session):
     assert payload["role"] == "participant"
     assert len(payload["participants"]) == 2
     assert {entry["username"] for entry in payload["participants"]} == {"host", "guest"}
+
+
+def test_watch_room_includes_demo_friends_with_presence(client, db_session, test_settings):
+    test_settings.watch_party_demo_participants = True
+    item = _create_playable_catalog_item(db_session)
+    token = _register_user(client, username="host", email="host@example.com")
+
+    response = client.post(
+        "/api/watch-party/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"target_type": "catalog", "content_slug": item.slug},
+    )
+
+    assert response.status_code == 201
+    from app.services.watch_party.demo_roster import demo_participants
+
+    participants = response.json()["participants"]
+    demo = [entry for entry in participants if entry["user_id"] < 0]
+    expected = demo_participants()
+    assert len(demo) == len(expected)
+    assert sum(1 for entry in demo if entry["is_connected"]) == sum(1 for e in expected if e.is_connected)
+    assert all(entry["avatar_url"].startswith("preset:") for entry in demo)
 
 
 def test_watch_room_invalid_room_returns_404(client):

@@ -12,3 +12,8 @@ __pycache__/
 .coverage
 *.egg-info/
 backend/*.sqlite
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/.a
+backend/imported_movies.txt

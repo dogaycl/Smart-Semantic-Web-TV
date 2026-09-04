@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.catalog_genre import CatalogGenre
@@ -212,4 +212,19 @@ class CatalogRepository:
             return (CatalogItem.vote_average.desc(), CatalogItem.popularity.desc(), CatalogItem.title.asc())
         if sort == "release_date_desc":
             return (CatalogItem.release_date.desc(), CatalogItem.popularity.desc(), CatalogItem.title.asc())
+        if sort == "playable_desc":
+            # Titles with a real, working playback source lead the list; everything else keeps
+            # the default popularity ordering behind them.
+            playable_ids = (
+                select(PlaybackSource.content_item_id)
+                .where(PlaybackSource.is_active.is_(True), PlaybackSource.last_error.is_(None))
+                .distinct()
+            )
+            playable_rank = case((CatalogItem.id.in_(playable_ids), 0), else_=1)
+            return (
+                playable_rank.asc(),
+                CatalogItem.popularity.desc(),
+                CatalogItem.vote_average.desc(),
+                CatalogItem.title.asc(),
+            )
         return (CatalogItem.popularity.desc(), CatalogItem.vote_average.desc(), CatalogItem.title.asc())

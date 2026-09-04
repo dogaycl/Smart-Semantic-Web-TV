@@ -1,14 +1,13 @@
-import { api } from "../services/api.js?v=31";
-import { VideoPlayer, cleanupVideoPlayer, mountVideoPlayer } from "../components/VideoPlayer.js?v=22";
-import { ChannelList } from "../components/ChannelList.js?v=23";
+import { api } from "../services/api.js?v=55";
+import { VideoPlayer, cleanupVideoPlayer, mountVideoPlayer } from "../components/VideoPlayer.js?v=55";
+import { ChannelList } from "../components/ChannelList.js?v=55";
 import {
   EPGGuide,
   captureEPGScroll,
   cleanupEPGGuide,
   dayKeyOf,
-  mountEPGGuide,
-  renderEPGDetail
-} from "../components/EPGGuide.js?v=28";
+  mountEPGGuide
+} from "../components/EPGGuide.js?v=55";
 import { startChannelWatchParty } from "./WatchPartyPage.js";
 
 const LIVE_TV_FILTERS = ["All", "News", "Sports", "Music", "Entertainment", "Youth", "Documentary", "Technology", "Business", "Education", "General TV"];
@@ -18,6 +17,8 @@ const LIVE_TV_LANGUAGE_FILTERS = [
   { label: "English", code: "en" }
 ];
 const PREFERRED_LIVE_CHANNELS = [
+  "TRT 1",
+  "Show TV",
   "TRT Haber",
   "Bloomberg TV",
   "Euronews English",
@@ -29,6 +30,27 @@ const PREFERRED_LIVE_CHANNELS = [
   "FITE 24/7",
   "Bloomberg Originals"
 ];
+
+const TURKISH_COUNTRY_CODES = new Set(["TR", "TUR"]);
+
+function channelPriority(channel) {
+  const name = String(channel.name || "").trim();
+  const normalizedName = name.toLocaleLowerCase("tr-TR");
+  const isTurkish = TURKISH_COUNTRY_CODES.has(String(channel.country || "").toUpperCase())
+    || String(channel.language || "").toLowerCase() === "tr";
+  if (normalizedName === "trt 1") return 0;
+  if (normalizedName === "show tv") return 1;
+  if (normalizedName.startsWith("trt ")) return 2;
+  if (isTurkish) return 3;
+  return 4;
+}
+
+function sortChannels(channels) {
+  return [...channels].sort((a, b) => (
+    channelPriority(a) - channelPriority(b)
+    || String(a.name || "").localeCompare(String(b.name || ""), "tr", { sensitivity: "base" })
+  ));
+}
 
 let liveTvRequestId = 0;
 
@@ -78,14 +100,14 @@ function renderPlayerMessage(badge, title, message) {
 
 function annotateChannels(data) {
   const guideByChannelId = new Map((data.epg?.channels || []).map((item) => [item.channel.id, item.entries || []]));
-  return (data.channels || []).map((channel) => {
+  return sortChannels((data.channels || []).map((channel) => {
     const entries = guideByChannelId.get(channel.id) || [];
     return {
       ...channel,
       guide_entries: entries.length,
       has_schedule: entries.length > 0
     };
-  });
+  }));
 }
 
 function visibleFilters(channels) {
@@ -107,10 +129,19 @@ function filterChannels(channels, activeFilter, activeLanguage) {
 }
 
 function filterEpg(epg, visibleChannelIds) {
+  const order = new Map(channelsForEpgOrder(epg, visibleChannelIds).map((id, index) => [id, index]));
   return {
     ...epg,
-    channels: (epg?.channels || []).filter(({ channel }) => visibleChannelIds.has(channel.id))
+    channels: (epg?.channels || [])
+      .filter(({ channel }) => visibleChannelIds.has(channel.id))
+      .sort((a, b) => (order.get(a.channel.id) ?? 9999) - (order.get(b.channel.id) ?? 9999))
   };
+}
+
+function channelsForEpgOrder(epg, visibleChannelIds) {
+  return sortChannels((epg?.channels || []).map(({ channel }) => channel))
+    .filter((channel) => visibleChannelIds.has(channel.id))
+    .map((channel) => channel.id);
 }
 
 function preferredPlayableChannel(channels) {
@@ -226,14 +257,6 @@ export function LiveTvPage() {
         return liveChannel ? { ...baseChannel, ...liveChannel } : baseChannel;
       };
 
-      const findEntry = (entryId) => {
-        for (const group of epg?.channels || []) {
-          const entry = (group.entries || []).find((candidate) => candidate.id === entryId);
-          if (entry) return { entry, channel: group.channel };
-        }
-        return null;
-      };
-
       // Rendering the guide is separate from render(): a date change must not re-mount the video
       // player, which would interrupt playback.
       const renderEpg = () => {
@@ -256,36 +279,8 @@ export function LiveTvPage() {
             if (!Number.isNaN(parsed.getTime())) return loadEpgForDate(startOfDay(parsed));
             return undefined;
           },
-          onSelectEntry: (entryId) => {
-            const found = findEntry(entryId);
-            if (!found) return;
-            const planItem = (acceptedPlan?.items || []).find(
-              (item) => item.epgEntryId === entryId
-                || item.candidateId === `epg:${found.channel.id}:${found.entry.source}:${found.entry.external_id}`
-            ) || null;
-            const channel = channels.find((item) => item.id === found.channel.id) || found.channel;
-            renderEPGDetail(mount, {
-              entry: found.entry,
-              channel,
-              planItem,
-              isPlayable: channel.playback?.type !== "unavailable"
-            });
-            // Let the grounded assistant answer about any programme in the guide, not just the
-            // one currently playing.
-            assistantContext?.setAttribute("data-context-type", "program");
-            assistantContext?.setAttribute("data-epg-entry-id", String(entryId));
-            assistantContext?.setAttribute("data-channel-id", String(found.channel.id));
-            assistantContext?.setAttribute("data-context-label", `${found.entry.title} on ${found.channel.name}`);
-            document.dispatchEvent(new CustomEvent("assistant:context-changed"));
-
-            mount.querySelector("[data-epg-detail-close]")?.addEventListener("click", () => {
-              renderEPGDetail(mount, { entry: null });
-            });
-            mount.querySelector("[data-epg-watch-channel]")?.addEventListener("click", async (event) => {
-              selectedChannelId = Number(event.currentTarget.dataset.epgWatchChannel);
-              await render({ refreshSelected: true });
-            });
-          },
+          // Clicking a programme block opens that channel in the player (details are in the
+          // hover tooltip, there is no separate detail panel).
           onSelectChannel: async (channelId) => {
             if (!channelId || channelId === selectedChannelId) return;
             selectedChannelId = channelId;

@@ -153,6 +153,40 @@ def test_profile_patch_updates_interest_and_categories(client):
     assert data["profile"]["preferred_categories"] == ["Drama", "Technology"]
 
 
+def test_profile_patch_persists_preset_avatar(client):
+    token, user = register_and_login(client)
+    assert user["profile"]["avatar_url"] == "https://example.com/avatar.png"
+
+    response = client.patch(
+        "/api/users/me/profile",
+        headers=auth_header(token),
+        json={"avatar_url": "preset:aurora"},
+    )
+    assert response.status_code == 200
+    assert response.json()["profile"]["avatar_url"] == "preset:aurora"
+
+    # A follow-up save that omits the avatar must not wipe it.
+    client.patch(
+        "/api/users/me/profile",
+        headers=auth_header(token),
+        json={"display_name": "Renamed"},
+    )
+    me_response = client.get("/api/auth/me", headers=auth_header(token))
+    assert me_response.status_code == 200
+    assert me_response.json()["profile"]["avatar_url"] == "preset:aurora"
+
+
+def test_profile_patch_rejects_invalid_avatar_reference(client):
+    token, _ = register_and_login(client)
+
+    response = client.patch(
+        "/api/users/me/profile",
+        headers=auth_header(token),
+        json={"avatar_url": "javascript:alert(1)"},
+    )
+    assert response.status_code in {400, 422}
+
+
 def test_personalization_endpoints_require_authentication(client):
     favorites_response = client.get("/api/users/me/favorites")
     history_response = client.get("/api/users/me/history")

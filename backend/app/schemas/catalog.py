@@ -59,6 +59,7 @@ class CatalogItemSummaryRead(BaseModel):
     primary_genre: str
     tmdb_url: HttpUrl
     has_trailer: bool
+    is_playable: bool = False
     last_synced_at: str | None = None
 
 

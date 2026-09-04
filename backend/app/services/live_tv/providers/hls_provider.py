@@ -36,6 +36,7 @@ class HLSStreamProvider:
                     is_available=False,
                     error=f"HTTP {response.status_code}",
                     checked_at=checked_at,
+                    check_failed=response.status_code == 429 or response.status_code >= 500,
                 )
 
             if not self._looks_like_manifest(content_type=content_type, text=text):
@@ -119,6 +120,15 @@ class HLSStreamProvider:
                     is_available=True,
                     checked_at=checked_at,
                 )
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            # DNS failure, connection refused/reset, timeout - the check never reached a verdict.
+            return StreamHealthResult(
+                stream_url=url,
+                is_available=False,
+                error=str(exc),
+                checked_at=checked_at,
+                check_failed=True,
+            )
         except httpx.HTTPError as exc:
             return StreamHealthResult(
                 stream_url=url,
@@ -128,13 +138,23 @@ class HLSStreamProvider:
             )
 
     def resolve_stream(self, candidates: list[str]) -> StreamHealthResult:
-        last_result = StreamHealthResult(stream_url=None, is_available=False, error="No candidate stream URLs configured.")
+        if not candidates:
+            return StreamHealthResult(stream_url=None, is_available=False, error="No candidate stream URLs configured.")
+
+        genuine_failure: StreamHealthResult | None = None
+        transient_failure: StreamHealthResult | None = None
         for url in candidates:
             result = self.check_stream(url)
             if result.is_available:
                 return result
-            last_result = result
-        return last_result
+            if result.check_failed:
+                transient_failure = transient_failure or result
+            else:
+                genuine_failure = genuine_failure or result
+        # A real "not playable" answer for any candidate outranks a network blip on another.
+        return genuine_failure or transient_failure or StreamHealthResult(
+            stream_url=candidates[0], is_available=False, error="No candidate stream URLs configured."
+        )
 
     def _looks_like_manifest(self, *, content_type: str, text: str) -> bool:
         return any(value in content_type for value in HLS_CONTENT_TYPES) or "#EXTM3U" in text[:2048]

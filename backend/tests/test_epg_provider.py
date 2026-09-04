@@ -17,6 +17,7 @@ def test_xmltv_provider_parses_timezone_and_channel_mapping(monkeypatch):
     <title>ABC Morning Briefing</title>
     <desc>Headlines from the US.</desc>
     <category>News</category>
+    <icon src="https://images.example.com/abc-morning.png" />
   </programme>
   <programme channel="TRT.WORLD.tr" start="20260815133000 +0300" stop="20260815143000 +0300">
     <title>TRT Midday</title>
@@ -40,5 +41,8 @@ def test_xmltv_provider_parses_timezone_and_channel_mapping(monkeypatch):
     assert "ABC.News.Live.us2" in entries
     assert entries["ABC.News.Live.us2"][0].title == "ABC Morning Briefing"
     assert entries["ABC.News.Live.us2"][0].start_time == datetime(2026, 8, 15, 10, 0, tzinfo=timezone.utc)
+    assert entries["ABC.News.Live.us2"][0].image_url == "https://images.example.com/abc-morning.png"
     assert entries["TRT.WORLD.tr"][0].start_time == datetime(2026, 8, 15, 10, 30, tzinfo=timezone.utc)
     assert entries["TRT.WORLD.tr"][0].category == "Current Affairs"
+    # A programme with no <icon> must not invent an image.
+    assert entries["TRT.WORLD.tr"][0].image_url is None

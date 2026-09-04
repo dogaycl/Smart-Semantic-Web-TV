@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -14,6 +16,28 @@ MAX_ATTEMPTS = 3
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 BASE_RETRY_DELAY_SECONDS = 2.0
 MAX_RETRY_DELAY_SECONDS = 8.0
+
+# Circuit breaker: once the free embedding quota is exhausted (HTTP 429), every later call would
+# burn ~6s of back-off before failing the same way. Remember the exhaustion and fail fast for a
+# cooldown so search / assistant / planner stay responsive on their lexical fallback.
+_QUOTA_COOLDOWN = timedelta(minutes=15)
+_quota_lock = threading.Lock()
+_quota_exhausted_until: datetime | None = None
+
+
+def _quota_is_exhausted() -> bool:
+    with _quota_lock:
+        return _quota_exhausted_until is not None and datetime.now(timezone.utc) < _quota_exhausted_until
+
+
+def _mark_quota_exhausted() -> None:
+    global _quota_exhausted_until
+    with _quota_lock:
+        _quota_exhausted_until = datetime.now(timezone.utc) + _QUOTA_COOLDOWN
+
+
+class QuotaExhaustedError(RuntimeError):
+    """Raised (fast) while the embedding quota is known to be exhausted."""
 
 
 class GeminiEmbeddingService(EmbeddingService):
@@ -33,6 +57,8 @@ class GeminiEmbeddingService(EmbeddingService):
     def _embed_text(self, text: str) -> list[float]:
         if not self.is_configured():
             raise RuntimeError("Gemini embedding service is not configured.")
+        if _quota_is_exhausted():
+            raise QuotaExhaustedError("Gemini embedding quota is exhausted; skipping the call.")
 
         model = self.settings.gemini_embedding_model.replace("models/", "")
 
@@ -53,10 +79,11 @@ class GeminiEmbeddingService(EmbeddingService):
                                 }
                             ]
                         },
-                        "embedContentConfig": {
-                            "outputDimensionality": self.settings.gemini_embedding_dimensions,
-                            "autoTruncate": True,
-                        },
+                        # outputDimensionality is a top-level field on the v1beta embedContent
+                        # request. Nested under a config key it is silently ignored and the model
+                        # returns its native dimension (3072 for gemini-embedding-001), which then
+                        # mismatches GEMINI_EMBEDDING_DIMENSIONS and the stored vectors.
+                        "outputDimensionality": self.settings.gemini_embedding_dimensions,
                     },
                     timeout=self.settings.search_request_timeout_seconds,
                 )
@@ -69,6 +96,11 @@ class GeminiEmbeddingService(EmbeddingService):
                 )
                 time.sleep(self._retry_delay(attempt=attempt, response=None))
                 continue
+
+            if response.status_code == 429:
+                _mark_quota_exhausted()
+                logger.warning("Gemini embedding quota exhausted (HTTP 429); pausing embedding calls.")
+                raise QuotaExhaustedError("Gemini embedding quota is exhausted.")
 
             if response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_ATTEMPTS:
                 logger.warning(

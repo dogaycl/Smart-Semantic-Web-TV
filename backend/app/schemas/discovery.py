@@ -14,6 +14,7 @@ class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=2, max_length=240)
     limit: int = Field(default=12, ge=1, le=30)
     window_hours: int | None = Field(default=None, ge=1, le=72)
+    mood: str | None = Field(default=None, max_length=32)
 
 
 class DiscoveryChannelRead(BaseModel):

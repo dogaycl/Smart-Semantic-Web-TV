@@ -1,7 +1,8 @@
 import { mediaBackground } from "../components/ContentCard.js";
 import { logout } from "../contexts/authContext.js";
 import { mountPlayerAdapter, renderPlaybackSurface } from "../components/playerAdapters.js";
-import { api, ApiError } from "../services/api.js?v=31";
+import { api, ApiError } from "../services/api.js?v=55";
+import { avatarMarkup } from "../services/avatar.js?v=55";
 import {
   WatchPartyConnection,
   buildWatchPartyInviteUrl,
@@ -164,11 +165,15 @@ function renderParticipants(participants = []) {
   return `
     <div class="watch-party-participants">
       ${ordered.map((participant) => `
-        <div class="watch-party-user">
-          <span class="watch-party-avatar">${escapeHtml((participant.displayName || participant.username).slice(0, 2).toUpperCase())}</span>
+        <div class="watch-party-user ${participant.isConnected ? "is-online" : "is-offline"}">
+          <span class="watch-party-avatar-wrap">
+            ${avatarMarkup(participant, { size: 42 })}
+            <span class="presence-dot ${participant.isConnected ? "online" : "offline"}" aria-hidden="true"></span>
+          </span>
           <div>
             <strong>${escapeHtml(participant.displayName)}</strong>
-            <small class="muted">${participant.isHost ? "Host" : "Participant"} • ${participant.isConnected ? "Connected" : "Disconnected"}</small>
+            ${participant.username ? `<small class="muted watch-party-user-handle">@${escapeHtml(participant.username)}</small>` : ""}
+            <small class="muted">${participant.isHost ? "Host" : "Participant"} • ${participant.isConnected ? "Online" : "Offline"}</small>
           </div>
         </div>
       `).join("")}
@@ -185,11 +190,14 @@ function renderChat(messages = []) {
     <div class="watch-party-chat-list">
       ${messages.slice(-30).map((message) => `
         <article class="watch-party-chat-item">
-          <div class="watch-party-chat-head">
-            <strong>${escapeHtml(message.displayName)}</strong>
-            <span>${formatTimestamp(message.createdAt)}</span>
+          <span class="watch-party-chat-avatar">${avatarMarkup(message, { size: 32 })}</span>
+          <div class="watch-party-chat-body">
+            <div class="watch-party-chat-head">
+              <strong>${escapeHtml(message.displayName)}</strong>
+              <span>${formatTimestamp(message.createdAt)}</span>
+            </div>
+            <p>${escapeHtml(message.messageText)}</p>
           </div>
-          <p>${escapeHtml(message.messageText)}</p>
         </article>
       `).join("")}
     </div>

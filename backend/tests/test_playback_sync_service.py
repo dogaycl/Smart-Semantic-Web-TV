@@ -120,10 +120,12 @@ def test_playback_sync_service_reactivates_curated_item_after_bulk_catalog_sync(
     service.sync_curated_catalog(db=db_session)
     curated_item = repository.get_by_tmdb(db=db_session, content_type="movie", tmdb_id=10378)
     assert curated_item.is_active is True
+    # The playback sync pins the curated item so the bulk reconciliation sweep leaves it alone.
+    assert curated_item.is_pinned is True
 
     # Simulate a bulk TMDB resync that discovers only unrelated, currently-popular titles -
-    # Big Buck Bunny is not among them, so the bulk sync deactivates it (this is correct
-    # behavior for the bulk sync in isolation).
+    # Big Buck Bunny is not among them. Because it is pinned, the bulk sweep must NOT
+    # deactivate it (this is the regression fix).
     unrelated_candidate = CatalogCandidate(tmdb_id=99999, content_type="movie", title="Some Popular Movie")
     original_fetch_catalog_item = provider.fetch_catalog_item
 
@@ -155,14 +157,18 @@ def test_playback_sync_service_reactivates_curated_item_after_bulk_catalog_sync(
     catalog_sync_service.sync_catalog(db=db_session)
 
     curated_item = repository.get_by_tmdb(db=db_session, content_type="movie", tmdb_id=10378)
-    assert curated_item.is_active is False, "bulk sync should deactivate titles TMDB no longer surfaces"
+    assert curated_item.is_active is True, "a pinned curated title must survive the bulk reconciliation sweep"
 
-    # The router calls playback_sync_service.ensure_ready() right after sync_service.ensure_ready()
-    # on every catalog request - reproduce that here directly via sync_curated_catalog().
+    # Even if a curated item somehow ends up inactive/unpinned, the router's
+    # playback_sync_service.ensure_ready() (reproduced here) repairs it.
+    curated_item.is_active = False
+    curated_item.is_pinned = False
+    db_session.commit()
     service.sync_curated_catalog(db=db_session)
 
     curated_item = repository.get_by_tmdb(db=db_session, content_type="movie", tmdb_id=10378)
-    assert curated_item.is_active is True, "playback sync must restore a curated item the bulk sync deactivated"
+    assert curated_item.is_active is True, "playback sync must restore a hidden curated item"
+    assert curated_item.is_pinned is True
     sources = db_session.query(PlaybackSource).filter(PlaybackSource.content_item_id == curated_item.id).all()
     assert len(sources) == 1
     assert sources[0].is_active is True

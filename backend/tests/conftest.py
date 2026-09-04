@@ -61,6 +61,7 @@ def test_settings():
     original_watch_party_message_limit = settings.watch_party_chat_message_max_length
     original_watch_party_drift_threshold = settings.watch_party_drift_threshold_seconds
     original_watch_party_sync_interval = settings.watch_party_sync_request_interval_seconds
+    original_watch_party_demo_participants = settings.watch_party_demo_participants
     settings.live_tv_auto_sync = False
     settings.youtube_api_key = "test-youtube-key"
     settings.live_tv_request_timeout_seconds = 1
@@ -89,6 +90,7 @@ def test_settings():
     settings.watch_party_chat_message_max_length = 400
     settings.watch_party_drift_threshold_seconds = 1.0
     settings.watch_party_sync_request_interval_seconds = 4
+    settings.watch_party_demo_participants = False
     try:
         yield settings
     finally:
@@ -123,6 +125,21 @@ def test_settings():
         settings.watch_party_chat_message_max_length = original_watch_party_message_limit
         settings.watch_party_drift_threshold_seconds = original_watch_party_drift_threshold
         settings.watch_party_sync_request_interval_seconds = original_watch_party_sync_interval
+        settings.watch_party_demo_participants = original_watch_party_demo_participants
+
+
+@pytest.fixture(autouse=True)
+def _reset_search_index_throttle():
+    # The request-path index refresh has a process-wide throttle, and the embedding client a
+    # process-wide 429 circuit breaker; clear both so each test starts fresh.
+    import app.services.search.embeddings.gemini as gemini_module
+    import app.services.search.index_service as index_module
+
+    index_module._last_ensure_ready_at = None
+    gemini_module._quota_exhausted_until = None
+    yield
+    index_module._last_ensure_ready_at = None
+    gemini_module._quota_exhausted_until = None
 
 
 @pytest.fixture()

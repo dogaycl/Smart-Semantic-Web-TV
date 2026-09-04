@@ -154,6 +154,13 @@ class LiveTVSyncService:
         for channel, seed, outcome in outcomes:
             if channel.source_type == "hls":
                 candidates, result = outcome
+                # A failed check (DNS failure, timeout, upstream 5xx) is not an answer about the
+                # channel. Keep the last known good state and leave last_checked_at untouched so
+                # the next sweep retries, instead of blanking a working channel on a network blip.
+                if not result.is_available and result.check_failed:
+                    channel.stream_error = redact_secrets(result.error)
+                    continue
+
                 channel.stream_url = result.stream_url
                 channel.quality = self._quality_from_candidates(candidates) or channel.quality
                 channel.stream_status = "healthy" if result.is_available else "unavailable"
@@ -492,6 +499,12 @@ class LiveTVSyncService:
         return self._normalize_language_code(seed.language)
 
     def _catalog_logo(self, *, channel_id: str, seed: ChannelSeed, catalog: IPTVOrgCatalog) -> str | None:
+        # A logo URL written into the seed is curator-vetted and takes precedence over the
+        # iptv-org catalog, whose entries for some channels point at CDNs that block hotlinking
+        # (jiotvimages, images.pluto.tv), leaving the channel list showing only fallback initials.
+        if seed.logo_url:
+            return seed.logo_url
+
         logos = catalog.logos.get(channel_id, [])
         if not logos:
             return seed.logo_url

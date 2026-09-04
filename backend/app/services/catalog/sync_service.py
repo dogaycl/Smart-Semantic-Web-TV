@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 import re
 import unicodedata
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -14,6 +16,12 @@ from app.models.catalog_video import CatalogVideo
 from app.repositories.catalog_repository import CatalogRepository
 from app.services.catalog.providers.base import CatalogProvider, ExternalCatalogItemPayload
 from app.services.catalog.providers.tmdb_provider import TMDBProvider
+
+logger = logging.getLogger(__name__)
+
+# The stale-item deactivation sweep only runs when at least this fraction of the discovered
+# candidates were fetched successfully, so a partially failed sync never wipes the catalog.
+MIN_COMPLETION_RATIO_FOR_DEACTIVATION = 0.8
 
 
 class CatalogSyncService:
@@ -47,16 +55,37 @@ class CatalogSyncService:
         if not candidates:
             return self.repository.list_active(db=db)
         synced_keys: set[tuple[str, int]] = set()
+        failures = 0
 
         for candidate in candidates:
-            payload = self.provider.fetch_catalog_item(tmdb_id=candidate.tmdb_id, content_type=candidate.content_type)
+            try:
+                payload = self.provider.fetch_catalog_item(
+                    tmdb_id=candidate.tmdb_id, content_type=candidate.content_type
+                )
+            except (httpx.HTTPError, ValueError) as exc:
+                failures += 1
+                logger.warning(
+                    "Skipping catalog candidate %s/%s after fetch failure: %s",
+                    candidate.content_type, candidate.tmdb_id, exc,
+                )
+                continue
             item = self._upsert_item(db=db, payload=payload, synced_at=now)
             synced_keys.add((item.content_type, item.tmdb_id))
 
-        if synced_keys:
+        completion_ratio = len(synced_keys) / len(candidates) if candidates else 0.0
+        if synced_keys and completion_ratio >= MIN_COMPLETION_RATIO_FOR_DEACTIVATION:
             for existing in self.repository.list_active(db=db):
+                if existing.is_pinned:
+                    # Curator-added / playable titles are not part of the bucket set and must
+                    # survive the reconciliation sweep.
+                    continue
                 if (existing.content_type, existing.tmdb_id) not in synced_keys:
                     existing.is_active = False
+        elif failures:
+            logger.warning(
+                "Catalog sync only completed %.0f%% of %s candidates; keeping existing items active.",
+                completion_ratio * 100, len(candidates),
+            )
 
         db.commit()
         return self.repository.list_active(db=db)
@@ -67,14 +96,23 @@ class CatalogSyncService:
         db: Session,
         payload: ExternalCatalogItemPayload,
         synced_at: datetime | None = None,
+        pinned: bool = False,
     ) -> CatalogItem:
         return self._upsert_item(
             db=db,
             payload=payload,
             synced_at=synced_at or datetime.now(timezone.utc),
+            pinned=pinned,
         )
 
-    def _upsert_item(self, *, db: Session, payload: ExternalCatalogItemPayload, synced_at: datetime) -> CatalogItem:
+    def _upsert_item(
+        self,
+        *,
+        db: Session,
+        payload: ExternalCatalogItemPayload,
+        synced_at: datetime,
+        pinned: bool = False,
+    ) -> CatalogItem:
         item = self.repository.get_by_tmdb(db=db, content_type=payload.content_type, tmdb_id=payload.tmdb_id)
         if item is None:
             item = self.repository.create(
@@ -111,6 +149,8 @@ class CatalogSyncService:
         item.number_of_episodes = payload.number_of_episodes
         item.tmdb_url = payload.tmdb_url
         item.is_active = True
+        if pinned:
+            item.is_pinned = True
         item.last_synced_at = synced_at
         item.genres = [
             CatalogGenre(tmdb_genre_id=genre_id, name=name)

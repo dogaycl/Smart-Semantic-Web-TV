@@ -56,8 +56,9 @@ export function ChannelList(channels, selectedChannelId) {
           <button class="channel-row ${channel.id === selectedChannelId ? "selected" : ""}" data-channel-id="${channel.id}" type="button">
             <span class="channel-logo">
               ${channel.logo_url
-                ? `<img src="${channel.logo_url}" alt="${channel.name} logo" loading="lazy" referrerpolicy="no-referrer" />`
-                : `<span>${channelInitials(channel.name)}</span>`}
+                ? `<img src="${channel.logo_url}" alt="${channel.name} logo" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" />`
+                : ""}
+              <span class="channel-logo-fallback" aria-hidden="true">${channelInitials(channel.name)}</span>
             </span>
             <div>
               <strong>${channel.name}</strong>

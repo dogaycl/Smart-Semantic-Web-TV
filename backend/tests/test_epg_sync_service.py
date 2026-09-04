@@ -1,8 +1,23 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.models.channel import Channel
+from app.services.epg.providers.tr_synopsis_provider import TRSynopsisProvider
 from app.services.epg.service import EPGService
 from app.services.live_tv.providers.base import ExternalEPGEntry
+
+
+@pytest.fixture(autouse=True)
+def _no_broadcaster_scrape(monkeypatch):
+    # Some fixtures use real channel slugs ("trt-1") that carry a synopsis_url; keep the sync
+    # off the network.
+    monkeypatch.setattr(TRSynopsisProvider, "fetch_synopses", lambda self, *, source_url: {})
+    monkeypatch.setattr(
+        TRSynopsisProvider,
+        "fetch_entries",
+        lambda self, *, source_url, window_start, window_end: [],
+    )
 
 
 def _create_channel(db_session, *, slug: str, source_type: str = "hls", epg_channel_id: str | None = "DEMO.tr") -> Channel:

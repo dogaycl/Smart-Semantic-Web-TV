@@ -1,9 +1,9 @@
-import { getActiveProfile } from "../services/userDataService.js";
+import { avatarMarkup } from "../services/avatar.js?v=55";
 
 export function Topbar(user) {
   const current = location.hash.replace("#", "") || "/";
   const active = (paths) => paths.includes(current) ? "active" : "";
-  const activeProfile = getActiveProfile();
+  const avatar = avatarMarkup(user || {}, { size: 34 });
   return `
     <header class="topbar vynex-topbar">
       <div class="topbar-main">
@@ -22,7 +22,7 @@ export function Topbar(user) {
         </nav>
         <div class="toolbar">
           <button class="command-trigger" data-command-open><span>⌘</span> Search</button>
-          <a class="profile-chip" href="#/profiles" title="Active profile">${activeProfile.slice(0, 2).toUpperCase()}</a>
+          <a class="profile-chip" href="#/profile" title="Profile settings">${avatar}</a>
           <button class="more-button" data-menu-toggle aria-label="Open account menu" aria-expanded="false">•••</button>
           <div class="account-menu" data-account-menu>
             <small class="menu-section-label">Personal</small>

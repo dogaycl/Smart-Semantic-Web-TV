@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date, datetime
 from typing import Any
 import httpx
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# TMDB itself is reliable, but the network path to api.themoviedb.org regularly drops a
+# connection mid-handshake (observed WinError 10054 / RemoteProtocolError on ~10-20% of a
+# long sequential sync). Without this retry a single transient drop aborts the whole
+# catalog sync and nothing is committed.
+MAX_ATTEMPTS = 4
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+BASE_RETRY_DELAY_SECONDS = 1.0
+MAX_RETRY_DELAY_SECONDS = 8.0
 from app.services.catalog.curation import CATALOG_BUCKETS
 from app.services.catalog.providers.base import (
     CatalogCandidate,
@@ -217,14 +230,49 @@ class TMDBProvider(CatalogProvider):
         elif self.settings.tmdb_api_key:
             request_params["api_key"] = self.settings.tmdb_api_key
 
-        response = httpx.get(
-            f"{self.base_api_url}{path}",
-            params=request_params,
-            headers=headers,
-            timeout=self.settings.catalog_request_timeout_seconds,
-        )
-        response.raise_for_status()
-        return response.json()
+        last_exc: Exception | None = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                response = httpx.get(
+                    f"{self.base_api_url}{path}",
+                    params=request_params,
+                    headers=headers,
+                    timeout=self.settings.catalog_request_timeout_seconds,
+                )
+            except httpx.TransportError as exc:
+                last_exc = exc
+                if attempt == MAX_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "TMDB request %s failed (attempt %s/%s), retrying: %s",
+                    path, attempt, MAX_ATTEMPTS, exc,
+                )
+                time.sleep(self._retry_delay(attempt=attempt, response=None))
+                continue
+
+            if response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_ATTEMPTS:
+                logger.warning(
+                    "TMDB request %s got HTTP %s (attempt %s/%s), retrying.",
+                    path, response.status_code, attempt, MAX_ATTEMPTS,
+                )
+                time.sleep(self._retry_delay(attempt=attempt, response=response))
+                continue
+
+            response.raise_for_status()
+            return response.json()
+
+        raise last_exc or RuntimeError(f"TMDB request {path} failed after retries.")
+
+    @staticmethod
+    def _retry_delay(*, attempt: int, response: httpx.Response | None) -> float:
+        if response is not None:
+            header_value = response.headers.get("retry-after")
+            if header_value:
+                try:
+                    return min(float(header_value), MAX_RETRY_DELAY_SECONDS)
+                except ValueError:
+                    pass
+        return min(BASE_RETRY_DELAY_SECONDS * (2 ** (attempt - 1)), MAX_RETRY_DELAY_SECONDS)
 
     def _genre_maps(self) -> tuple[dict[str, int], dict[str, int]]:
         if self._movie_genres is None:
@@ -337,8 +385,10 @@ class TMDBProvider(CatalogProvider):
         return names
 
     def _map_movie_crew(self, values: list[dict[str, Any]]) -> list[str]:
+        # Keep the person's role in the string ("Denis Villeneuve (Director)") so the assistant
+        # can answer "who directed this" instead of only seeing an unlabelled list of names.
         priority_jobs = ("Director", "Writer", "Screenplay", "Story", "Producer")
-        names: list[str] = []
+        entries: list[str] = []
         seen: set[str] = set()
         for job in priority_jobs:
             for value in values:
@@ -348,32 +398,35 @@ class TMDBProvider(CatalogProvider):
                 if not name or name in seen:
                     continue
                 seen.add(name)
-                names.append(name)
-                if len(names) >= 6:
-                    return names
-        return names
+                entries.append(f"{name} ({job})")
+                if len(entries) >= 6:
+                    return entries
+        return entries
 
     def _map_tv_crew(self, created_by: list[dict[str, Any]], aggregate_crew: list[dict[str, Any]]) -> list[str]:
-        names: list[str] = []
+        entries: list[str] = []
         seen: set[str] = set()
         for value in created_by:
             name = value.get("name")
             if not name or name in seen:
                 continue
             seen.add(name)
-            names.append(name)
+            entries.append(f"{name} (Creator)")
         for value in aggregate_crew:
             name = value.get("name")
             if not name or name in seen:
                 continue
-            jobs = value.get("jobs", [])
-            if not any(job.get("job") in {"Writer", "Executive Producer", "Director"} for job in jobs):
+            role = next(
+                (job.get("job") for job in value.get("jobs", []) if job.get("job") in {"Director", "Writer", "Executive Producer"}),
+                None,
+            )
+            if role is None:
                 continue
             seen.add(name)
-            names.append(name)
-            if len(names) >= 6:
+            entries.append(f"{name} ({role})")
+            if len(entries) >= 6:
                 break
-        return names
+        return entries
 
     def _first_runtime(self, values: list[Any]) -> int | None:
         for value in values:

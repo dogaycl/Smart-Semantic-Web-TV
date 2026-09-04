@@ -51,6 +51,7 @@ export function normalizeCatalogSummary(item) {
     numberOfEpisodes: item.number_of_episodes,
     tmdbUrl: item.tmdb_url,
     hasTrailer: item.has_trailer,
+    isPlayable: Boolean(item.is_playable),
     lastSyncedAt: item.last_synced_at
   };
 }

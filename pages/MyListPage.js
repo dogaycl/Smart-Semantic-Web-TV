@@ -1,6 +1,6 @@
-import { ensureFavoritesLoaded } from "../services/favoritesService.js?v=21";
-import { ContentCard } from "../components/ContentCard.js?v=21";
-import { api } from "../services/api.js?v=31";
+import { ensureFavoritesLoaded } from "../services/favoritesService.js?v=55";
+import { ContentCard } from "../components/ContentCard.js?v=55";
+import { api } from "../services/api.js?v=55";
 
 export function MyListPage() {
   queueMicrotask(() => {

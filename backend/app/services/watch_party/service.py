@@ -46,6 +46,7 @@ from app.schemas.watch_party import (
 )
 from app.services.live_tv.service import LiveTVService
 from app.services.playback.service import CatalogPlaybackService
+from app.services.watch_party.demo_roster import demo_participants
 from app.services.watch_party.manager import RoomConnectionManager
 
 
@@ -430,6 +431,12 @@ class WatchRoomService:
             limit=get_settings().watch_party_chat_history_limit,
         )
         participants = self.participant_repository.list_active(db=db, room_id=room.id)
+        participant_reads = [self._build_participant_read(item) for item in participants]
+        if get_settings().watch_party_demo_participants:
+            existing_ids = {entry.user_id for entry in participant_reads}
+            participant_reads.extend(
+                friend for friend in demo_participants() if friend.user_id not in existing_ids
+            )
         return WatchRoomDetailResponse(
             room=self._build_room_read(room),
             target=resolved.target,
@@ -437,7 +444,7 @@ class WatchRoomService:
             joined=force_joined or bool(participant and participant.is_active),
             invite_path=f"#/watch-party/{room.room_code}",
             websocket_url=f"/api/watch-party/ws/{room.room_code}",
-            participants=[self._build_participant_read(item) for item in participants],
+            participants=participant_reads,
             recent_messages=[self._build_message_read(item) for item in messages] if force_joined or bool(participant and participant.is_active) else [],
             host_reconnect_grace_seconds=get_settings().watch_party_host_reconnect_grace_seconds,
         )

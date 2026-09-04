@@ -1,5 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
 from app.models.channel import Channel
 from app.services.live_tv.catalog import ChannelSeed
+from app.services.live_tv.providers.base import StreamHealthResult
 from app.services.live_tv.sync_service import IPTVOrgCatalog, LiveTVSyncService
 
 
@@ -179,3 +182,98 @@ def test_stream_candidates_prefer_browser_safe_english_feeds(db_session):
         "https://english.example.com/live.m3u8",
         "https://spanish.example.com/live.m3u8",
     ]
+
+
+def _hls_seed(slug: str) -> ChannelSeed:
+    return ChannelSeed(
+        slug=slug,
+        name="Health Demo",
+        description="HLS channel for health checks.",
+        category="News",
+        country="US",
+        language="en",
+        source_type="hls",
+        preferred_stream_urls=["https://demo.example.com/live.m3u8"],
+    )
+
+
+def test_transient_check_failure_keeps_last_known_good_status(db_session, monkeypatch):
+    service = LiveTVSyncService()
+    seeds = {"health-demo": _hls_seed("health-demo")}
+    monkeypatch.setattr(service, "_enabled_seed_map", lambda: seeds)
+    monkeypatch.setattr(service, "_fetch_iptv_org_catalog", lambda: IPTVOrgCatalog())
+
+    checked_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    channel = Channel(
+        slug="health-demo",
+        name="Health Demo",
+        category="News",
+        country="US",
+        language="en",
+        source_type="hls",
+        is_active=True,
+        stream_url="https://demo.example.com/live.m3u8",
+        stream_status="healthy",
+        live_status="live",
+        last_checked_at=checked_at,
+    )
+    db_session.add(channel)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        service.hls_provider,
+        "resolve_stream",
+        lambda candidates: StreamHealthResult(
+            stream_url=None, is_available=False, error="getaddrinfo failed", check_failed=True
+        ),
+    )
+
+    service.refresh_live_status(db=db_session, channels=[channel])
+    db_session.refresh(channel)
+
+    # A network blip must not blank a channel that was working.
+    assert channel.stream_status == "healthy"
+    assert channel.live_status == "live"
+    assert channel.stream_url == "https://demo.example.com/live.m3u8"
+    assert channel.last_checked_at.replace(tzinfo=timezone.utc) == checked_at
+    assert "getaddrinfo failed" in (channel.stream_error or "")
+
+
+def test_genuine_unavailable_result_marks_channel_unavailable(db_session, monkeypatch):
+    service = LiveTVSyncService()
+    seeds = {"health-demo": _hls_seed("health-demo")}
+    monkeypatch.setattr(service, "_enabled_seed_map", lambda: seeds)
+    monkeypatch.setattr(service, "_fetch_iptv_org_catalog", lambda: IPTVOrgCatalog())
+
+    channel = Channel(
+        slug="health-demo",
+        name="Health Demo",
+        category="News",
+        country="US",
+        language="en",
+        source_type="hls",
+        is_active=True,
+        stream_url="https://demo.example.com/live.m3u8",
+        stream_status="healthy",
+        live_status="live",
+        last_checked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    db_session.add(channel)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        service.hls_provider,
+        "resolve_stream",
+        lambda candidates: StreamHealthResult(
+            stream_url="https://demo.example.com/live.m3u8",
+            is_available=False,
+            error="The HLS manifest is missing browser CORS headers.",
+            checked_at=datetime.now(timezone.utc),
+        ),
+    )
+
+    service.refresh_live_status(db=db_session, channels=[channel])
+    db_session.refresh(channel)
+
+    assert channel.stream_status == "unavailable"
+    assert channel.live_status == "unavailable"

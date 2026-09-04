@@ -28,6 +28,12 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must win over component display rules (e.g. .planner-form-grid sets
+   `display: grid`, which otherwise keeps a [hidden] element visible). */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -1116,6 +1122,40 @@ kbd {
   gap: 14px;
 }
 
+.discover-results-sections,
+.discover-result-section {
+  display: grid;
+  gap: 14px;
+}
+
+.discover-results-sections {
+  gap: 28px;
+}
+
+.discover-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.discover-section-head h3 {
+  margin: 4px 0 0;
+  font-size: 21px;
+}
+
+.discover-section-head > strong {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: #08090d;
+  background: var(--plex);
+}
+
 .discover-card {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
@@ -1480,10 +1520,14 @@ kbd {
 
 .ai-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  /* Equal columns so "Recent My Channel lineups" and "Why it is trustworthy" match in size. */
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
+  align-items: stretch;
 }
 
+/* "Build your lineup" and the player/summary card sit side by side; the lineup itself renders
+   as a full-width horizontal strip below them (.planner-lineup-strip). */
 .planner-studio {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.05fr);
@@ -1493,6 +1537,25 @@ kbd {
 .planner-form-card,
 .planner-result-card {
   align-content: start;
+}
+
+.planner-lineup-strip:empty {
+  display: none;
+}
+
+.planner-lineup-strip {
+  margin-top: 16px;
+}
+
+.planner-lineup-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.planner-lineup-head h3 {
+  margin: 0;
+  font-size: 16px;
 }
 
 .planner-form-head {
@@ -1548,6 +1611,91 @@ kbd {
   margin: 0;
 }
 
+/* My Channel lineup player */
+.planner-now-playing {
+  display: grid;
+  gap: 0;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+
+.planner-player-surface {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #000;
+}
+
+.planner-player-surface .video-player,
+.planner-player-surface .video-screen,
+.planner-player-surface-inner {
+  height: 100%;
+}
+
+.planner-player-surface .video-screen {
+  border-radius: 0;
+}
+
+.planner-player-surface .live-embed,
+.planner-player-surface .playback-frame,
+.planner-player-surface video {
+  width: 100%;
+  height: 100%;
+}
+
+.planner-player-loading,
+.planner-player-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 10px;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  padding: 20px;
+  color: var(--muted);
+}
+
+.planner-player-fallback strong {
+  color: var(--text);
+}
+
+.planner-player-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--panel-solid);
+  border-top: 1px solid var(--line);
+}
+
+.planner-player-now {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-now-label {
+  color: var(--accent);
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+}
+
+.planner-plan-item.is-playing {
+  border-color: var(--accent);
+  background: rgba(199, 122, 17, 0.12);
+}
+
 .planner-result-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1578,10 +1726,29 @@ kbd {
   color: #8ef0b9;
 }
 
-.planner-plan-list,
-.planner-saved-list {
+.planner-plan-list {
   display: grid;
   gap: 12px;
+}
+
+/* Saved lineups scroll horizontally so the card keeps a fixed footprint next to the
+   equal-sized "Why it is trustworthy" card. */
+.planner-saved-list {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+
+.planner-saved-list .planner-saved-button {
+  flex: 0 0 240px;
+  scroll-snap-align: start;
+}
+
+.planner-saved-list .planner-empty {
+  flex: 1 1 auto;
 }
 
 .planner-plan-item,
@@ -2361,6 +2528,19 @@ kbd {
   flex: 0 0 auto;
 }
 
+.playable-badge {
+  background: #34d17f;
+  color: #06210f;
+  letter-spacing: 0.02em;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.playable-badge:hover {
+  background: #46e592;
+}
+
 .card-body {
   padding: 13px;
   min-height: 104px;
@@ -2562,22 +2742,43 @@ kbd {
 }
 
 .channel-logo {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  background: #0f1117;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: 10px;
+  /* Neutral light plate: TV brand logos are almost all designed for a light background, so this
+     reads cleanly for any channel instead of tinting every logo red. */
+  background: #eef1f6;
   color: var(--plex);
   font-weight: 900;
   overflow: hidden;
 }
 
 .channel-logo img {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
+  padding: 6px;
   object-fit: contain;
-  background: rgba(255, 255, 255, 0.04);
+  background: #eef1f6;
+}
+
+.channel-logo-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #e8ebf2;
+  /* Brand-agnostic slate, shown only when a channel has no real logo. */
+  background: linear-gradient(135deg, #313747 0%, #232838 60%, #1b2030 100%);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
 }
 
 .channel-source {
@@ -2634,14 +2835,22 @@ kbd {
   font-weight: 700;
 }
 
+.epg-plan-note.is-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 /* Both sticky axes must resolve against the same scrollport, so this box scrolls in x and y
    and is height-capped instead of letting the page scroll vertically. */
 .epg-viewport {
+  width: 100%;
   overflow: auto;
   max-height: clamp(320px, 58vh, 640px);
   border-top: 1px solid var(--line);
   overscroll-behavior-x: contain;
   scrollbar-gutter: stable;
+  scrollbar-color: var(--accent) rgba(255, 255, 255, 0.08);
+  touch-action: pan-x pan-y;
 }
 
 .epg-canvas {
@@ -2698,7 +2907,7 @@ kbd {
 .epg-row {
   display: flex;
   content-visibility: auto;
-  contain-intrinsic-size: auto 78px;
+  contain-intrinsic-size: auto 86px;
 }
 
 .epg-channel {
@@ -2709,7 +2918,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 78px;
+  min-height: 86px;
   padding: 8px 10px;
   background: var(--panel-solid);
   border-right: 1px solid var(--line);
@@ -2722,14 +2931,16 @@ kbd {
 }
 
 .epg-channel.is-selected {
-  background: rgba(199, 122, 17, 0.16);
+  /* Must stay fully opaque: the sticky channel column sits above the horizontally-scrolling
+     programme track, and a translucent fill let block text bleed through and look overlapped. */
+  background: #2b2519;
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .epg-channel .channel-logo {
-  flex: 0 0 42px;
-  width: 42px;
-  height: 42px;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
 }
 
 .epg-channel-text {
@@ -2753,7 +2964,7 @@ kbd {
 .epg-track {
   position: relative;
   flex: 0 0 var(--epg-width);
-  min-height: 78px;
+  min-height: 86px;
   border-bottom: 1px solid var(--line);
   background-image:
     repeating-linear-gradient(to right, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px calc(var(--epg-ppm) * 60)),
@@ -2914,45 +3125,39 @@ kbd {
   display: none;
 }
 
-.epg-detail {
-  padding: 16px 18px 18px;
-  border-top: 1px solid var(--line);
-}
-
-.epg-detail-head {
+/* Hover / focus tooltip for guide programme blocks. Positioned by JS against the block rect. */
+.epg-tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 300px;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-solid, #14161d);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
 }
 
-.epg-detail-head h3 {
-  margin: 2px 0 0;
-  font-size: 18px;
+.epg-tooltip-title {
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--text);
 }
 
-.epg-detail-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 10px 0;
-  color: var(--muted);
+.epg-tooltip-meta {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.epg-tooltip-desc {
   font-size: 12px;
-}
-
-.epg-detail-plan {
-  margin: 0 0 8px;
-  color: var(--blue);
-  font-size: 13px;
-}
-
-.epg-detail-description {
-  margin: 0 0 14px;
-  max-width: 70ch;
+  line-height: 1.45;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .live-embed,
@@ -4216,4 +4421,243 @@ h3,
 .account-menu strong,
 .sidebar-user small {
   font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ */
+/* Profile pictures (shared avatar rendering)                          */
+/* ------------------------------------------------------------------ */
+.avatar-media {
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: #0b0c12;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, #485563, #29323c);
+}
+
+.avatar-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-media img + .avatar-media-fallback {
+  display: none;
+}
+
+.profile-avatar-preview {
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
+}
+
+.profile-chip {
+  background: transparent;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.avatar-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.avatar-picker-option {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.avatar-picker-option:hover {
+  border-color: rgba(199, 122, 17, 0.5);
+}
+
+.avatar-picker-option.active {
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Watch Together - presence + chat avatars                            */
+/* ------------------------------------------------------------------ */
+.watch-party-avatar-wrap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.presence-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-solid, #10131b);
+}
+
+.presence-dot.online {
+  background: #34d17f;
+}
+
+.presence-dot.offline {
+  background: #7a8291;
+}
+
+.watch-party-user > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.watch-party-user > div strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch-party-user.is-online > div small {
+  color: #34d17f;
+}
+
+.watch-party-user > div small.watch-party-user-handle {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.watch-party-user.is-offline {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.watch-party-chat-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.watch-party-chat-body {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* My Channel - horizontal chronological timeline                      */
+/* ------------------------------------------------------------------ */
+.planner-timeline-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+  scroll-snap-type: x proximity;
+}
+
+.planner-timeline {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  min-width: min-content;
+}
+
+.planner-plan-item.planner-timeline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-template-columns: none;
+  flex: 0 0 250px;
+  scroll-snap-align: start;
+}
+
+.planner-timeline-item::before {
+  content: "";
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), rgba(199, 122, 17, 0.15));
+}
+
+.planner-timeline-item.is-playing::before {
+  background: var(--accent);
+}
+
+.planner-timeline-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.planner-timeline-clock {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--plex);
+}
+
+.planner-timeline-note {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.planner-timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.planner-timeline-runtime {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.planner-timeline-title {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.planner-timeline-channel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.planner-timeline-item .planner-why-this {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.planner-timeline-action {
+  margin-top: auto;
+}
+
+.planner-timeline-action .primary-button,
+.planner-timeline-action .ghost-button {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .planner-plan-item.planner-timeline-item {
+    flex-basis: 78vw;
+  }
+
+  .avatar-picker {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }

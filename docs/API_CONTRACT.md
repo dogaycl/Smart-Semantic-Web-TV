@@ -578,11 +578,15 @@ Request:
 ```json
 {
   "display_name": "Doga Yucel",
-  "avatar_url": "https://example.com/avatar.png",
+  "avatar_url": "preset:aurora",
   "interests": ["Semantic Search", "Cinema"],
   "preferred_categories": ["Drama", "Technology"]
 }
 ```
+
+`avatar_url` accepts either a predefined avatar token `preset:<id>` (rendered by the frontend
+as a gradient tile) or an absolute `http(s)` image URL. Omitting the field on a partial update
+leaves the stored avatar unchanged. Any other value is rejected with `400`.
 
 Success response `200`:
 
@@ -617,6 +621,10 @@ Sort options:
 - `rating_desc`
 - `release_date_desc`
 - `title_asc`
+- `playable_desc` — titles with a working playback source first, then popularity
+
+Each catalog summary also carries `is_playable` (boolean): `true` when the title has an
+active playback source with no health error, i.e. it can actually be watched in full.
 
 Category filter values currently normalized by the backend:
 
@@ -1002,7 +1010,8 @@ Request:
 {
   "query": "Find a science documentary about space tonight.",
   "limit": 8,
-  "window_hours": 6
+  "window_hours": 6,
+  "mood": "romantic"
 }
 ```
 
@@ -1010,6 +1019,10 @@ Notes:
 
 - `limit` defaults to `12` and is capped at `30`
 - `window_hours` is optional and can be used to bias or constrain live-program retrieval windows
+- `mood` is optional (`relax` | `funny` | `excited` | `romantic` | `scary`). It applies a metadata-driven
+  ranking profile (genre affinity, description/keyword affinity, and avoidance of opposing
+  genres) so different moods measurably re-rank the same catalog + EPG content. Unknown values
+  are ignored.
 - `Authorization: Bearer <token>` is optional. When present, the backend can lightly personalize ranking with saved interests and preferred categories.
 
 Success response `200`:

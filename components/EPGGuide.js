@@ -7,7 +7,7 @@
 // whenever a longer programme also overlapped the slot.
 
 const PX_PER_MINUTE = 4; // a 30-minute column is 120px wide
-const CHANNEL_COLUMN_PX = 220;
+const CHANNEL_COLUMN_PX = 264;
 const TICK_MINUTES = 30;
 const MIN_GAP_MINUTES = 3; // shorter gaps are not worth rendering as their own block
 const MS_PER_MINUTE = 60000;
@@ -28,6 +28,31 @@ function escapeHtml(value) {
 
 function formatTime(value) {
   return timeFormatter.format(new Date(value));
+}
+
+/**
+ * Trim a broadcaster synopsis down to a short tooltip-sized blurb without altering wording.
+ *
+ * XMLTV feeds occasionally carry a full paragraph in <desc>. The tooltip only has room for one
+ * or two sentences, so this keeps whole sentences up to a soft length limit and appends an
+ * ellipsis when it had to cut. It never rewrites or summarises - the text shown is verbatim
+ * source text, just fewer sentences of it.
+ */
+export function shortenDescription(value, { maxSentences = 2, maxChars = 220 } = {}) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+  let out = "";
+  for (const sentence of sentences.slice(0, maxSentences)) {
+    if (out && (out.length + sentence.length) > maxChars) break;
+    out += sentence;
+  }
+  out = out.trim() || text.slice(0, maxChars).trim();
+  if (out.length < text.length) {
+    out = out.replace(/[.,;:\s]+$/, "");
+    out += "…";
+  }
+  return out;
 }
 
 function channelInitials(name = "") {
@@ -109,14 +134,18 @@ function matchPlanItem(index, channel, entry) {
 
 function renderChannelCell(channel, isSelected) {
   const logo = channel.logo_url
-    ? `<img src="${escapeHtml(channel.logo_url)}" alt="${escapeHtml(channel.name)} logo" loading="lazy" referrerpolicy="no-referrer" />`
-    : `<span>${escapeHtml(channelInitials(channel.name))}</span>`;
-  const meta = [channel.category, channel.language ? String(channel.language).toUpperCase() : null, channel.country]
+    ? `<img src="${escapeHtml(channel.logo_url)}" alt="${escapeHtml(channel.name)} logo" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" />`
+    : "";
+  const language = channel.language ? String(channel.language).toUpperCase() : null;
+  const country = channel.country ? String(channel.country).toUpperCase() : null;
+  // Turkish channels carry language "tr" and country "TR", which rendered as a redundant
+  // "TR • TR"; collapse the duplicate.
+  const meta = [channel.category, language, country === language ? null : country]
     .filter(Boolean)
     .join(" • ");
   return `
     <div class="epg-channel ${isSelected ? "is-selected" : ""}" data-epg-channel-id="${channel.id}">
-      <span class="channel-logo">${logo}</span>
+        <span class="channel-logo">${logo}<span class="channel-logo-fallback" aria-hidden="true">${escapeHtml(channelInitials(channel.name))}</span></span>
       <div class="epg-channel-text">
         <strong>${escapeHtml(channel.name)}</strong>
         <small class="muted">${escapeHtml(meta)}</small>
@@ -142,12 +171,15 @@ function renderBlock(segment, channel, planItem, nowMs) {
 
   // Always label the real broadcast times, even when the block itself is clipped by the window.
   const label = `${formatTime(entry.start_time)} - ${formatTime(entry.end_time)}`;
-  const tooltip = [
-    `${entry.title} · ${label}`,
+  // The hover tooltip (mounted separately) reads these; the short description is the real
+  // XMLTV synopsis trimmed to one or two sentences, never generated text.
+  const shortDesc = shortenDescription(entry.description);
+  const ariaLabel = [
+    `${entry.title}, ${label}`,
     channel.name,
-    isLive ? "On air now" : "",
-    planItem ? `My Channel: ${planItem.recommendationReason || "part of your accepted lineup"}` : ""
-  ].filter(Boolean).join(" — ");
+    isLive ? "on air now" : "",
+    shortDesc
+  ].filter(Boolean).join(". ");
 
   return `
     <button type="button"
@@ -157,8 +189,11 @@ function renderBlock(segment, channel, planItem, nowMs) {
       data-epg-block-channel-id="${channel.id}"
       data-epg-start="${realStart}"
       data-epg-end="${realEnd}"
-      title="${escapeHtml(tooltip)}"
-      aria-label="${escapeHtml(tooltip)}">
+      data-epg-tip-title="${escapeHtml(entry.title)}"
+      data-epg-tip-time="${escapeHtml(label)}"
+      data-epg-tip-channel="${escapeHtml(channel.name)}"
+      data-epg-tip-desc="${escapeHtml(shortDesc)}"
+      aria-label="${escapeHtml(ariaLabel)}">
       ${pills ? `<span class="epg-block-pills">${pills}</span>` : ""}
       <strong class="epg-block-title">${escapeHtml(entry.title)}</strong>
       <span class="epg-time">${escapeHtml(label)}</span>
@@ -247,9 +282,14 @@ export function EPGGuide({ epg, selectedChannelId = null, activePlan = null, sel
   }).join("");
 
   const nowOffsetPx = isToday ? ((nowMs - windowStartMs) / MS_PER_MINUTE) * PX_PER_MINUTE : 0;
-  const planNote = plannedOnThisDay
-    ? `<span class="epg-plan-note">&#9733; ${plannedOnThisDay} My Channel ${plannedOnThisDay === 1 ? "programme" : "programmes"} on this day</span>`
-    : "";
+  let planNote = "";
+  if (plannedOnThisDay) {
+    planNote = `<span class="epg-plan-note">&#9733; ${plannedOnThisDay} My Channel ${plannedOnThisDay === 1 ? "programme" : "programmes"} on this day &mdash; highlighted in blue below</span>`;
+  } else if (activePlan) {
+    // An accepted plan exists but none of its programmes fall in the visible day / channel
+    // filter, so tell the viewer why they see no blue highlights rather than leaving it silent.
+    planNote = `<span class="epg-plan-note is-empty">&#9733; Your accepted My Channel lineup is for ${escapeHtml(activePlan.planDate || "another day")} &mdash; switch the guide date or clear the channel filter to see it highlighted</span>`;
+  }
 
   return `
     <section class="epg" data-epg>
@@ -276,7 +316,6 @@ export function EPGGuide({ epg, selectedChannelId = null, activePlan = null, sel
           <div class="epg-nowline" aria-hidden="true"></div>
         </div>
       </div>
-      <div data-epg-detail></div>
     </section>
   `;
 }
@@ -292,6 +331,47 @@ let nowTimer = null;
 let blockClock = [];
 let boundRoot = null;
 let boundClickHandler = null;
+let tooltipEl = null;
+let boundTooltipShow = null;
+let boundTooltipHide = null;
+
+function ensureTooltip() {
+  if (tooltipEl && document.body.contains(tooltipEl)) return tooltipEl;
+  tooltipEl = document.createElement("div");
+  tooltipEl.className = "epg-tooltip";
+  tooltipEl.setAttribute("role", "tooltip");
+  tooltipEl.hidden = true;
+  document.body.appendChild(tooltipEl);
+  return tooltipEl;
+}
+
+function hideTooltip() {
+  if (tooltipEl) tooltipEl.hidden = true;
+}
+
+function showTooltipFor(block) {
+  const tip = ensureTooltip();
+  const title = block.dataset.epgTipTitle || "";
+  const time = block.dataset.epgTipTime || "";
+  const channelName = block.dataset.epgTipChannel || "";
+  const desc = block.dataset.epgTipDesc || "";
+  tip.innerHTML = `
+    <strong class="epg-tooltip-title">${escapeHtml(title)}</strong>
+    <span class="epg-tooltip-meta">${escapeHtml([time, channelName].filter(Boolean).join(" · "))}</span>
+    ${desc ? `<span class="epg-tooltip-desc">${escapeHtml(desc)}</span>` : ""}
+  `;
+  tip.hidden = false;
+
+  const rect = block.getBoundingClientRect();
+  const tipRect = tip.getBoundingClientRect();
+  const margin = 8;
+  let left = rect.left + rect.width / 2 - tipRect.width / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - tipRect.width - margin));
+  let top = rect.top - tipRect.height - margin;
+  if (top < margin) top = rect.bottom + margin; // flip below when there is no room above
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
 
 function defaultScrollLeft(canvas) {
   const windowStart = Number(canvas.dataset.epgWindowStart);
@@ -319,11 +399,20 @@ export function cleanupEPGGuide() {
   if (boundRoot && boundClickHandler) {
     boundRoot.removeEventListener("click", boundClickHandler);
   }
+  if (boundRoot && boundTooltipShow) {
+    boundRoot.removeEventListener("pointerover", boundTooltipShow);
+    boundRoot.removeEventListener("focusin", boundTooltipShow);
+    boundRoot.removeEventListener("pointerout", boundTooltipHide);
+    boundRoot.removeEventListener("focusout", boundTooltipHide);
+  }
+  hideTooltip();
   boundRoot = null;
   boundClickHandler = null;
+  boundTooltipShow = null;
+  boundTooltipHide = null;
 }
 
-export function mountEPGGuide(root, { onSelectDate, onSelectEntry, onSelectChannel } = {}) {
+export function mountEPGGuide(root, { onSelectDate, onSelectChannel } = {}) {
   cleanupEPGGuide();
   if (!root) return;
   boundRoot = root;
@@ -378,14 +467,19 @@ export function mountEPGGuide(root, { onSelectDate, onSelectEntry, onSelectChann
   }
 
   boundClickHandler = (event) => {
-    const dayButton = event.target.closest("[data-epg-day]");
+    // Scope the date control to the datebar: the scrolling canvas also carries a data-epg-day
+    // attribute (its current day key), so an unscoped selector would swallow every programme
+    // click as a same-day reload.
+    const dayButton = event.target.closest(".epg-datebar [data-epg-day]");
     if (dayButton && onSelectDate) {
       onSelectDate(dayButton.dataset.epgDay);
       return;
     }
-    const block = event.target.closest(".epg-block[data-epg-entry-id]");
-    if (block && onSelectEntry) {
-      onSelectEntry(Number(block.dataset.epgEntryId), Number(block.dataset.epgBlockChannelId));
+    // Clicking a programme (or its channel cell) opens that channel in the player. Programme
+    // details live in the hover tooltip; there is no separate detail panel.
+    const block = event.target.closest(".epg-block[data-epg-block-channel-id]");
+    if (block && onSelectChannel) {
+      onSelectChannel(Number(block.dataset.epgBlockChannelId));
       return;
     }
     const channelCell = event.target.closest(".epg-channel[data-epg-channel-id]");
@@ -395,40 +489,28 @@ export function mountEPGGuide(root, { onSelectDate, onSelectEntry, onSelectChann
   };
   root.addEventListener("click", boundClickHandler);
 
+  // Hover / keyboard-focus tooltip. Delegated from the mount so it survives block re-renders,
+  // and torn down in cleanupEPGGuide so listeners never stack across renders.
+  boundTooltipShow = (event) => {
+    const block = event.target.closest(".epg-block[data-epg-entry-id]");
+    if (!block || !root.contains(block)) return;
+    showTooltipFor(block);
+  };
+  boundTooltipHide = (event) => {
+    const block = event.target.closest(".epg-block[data-epg-entry-id]");
+    if (!block) return;
+    const next = event.relatedTarget;
+    if (next && block.contains(next)) return;
+    hideTooltip();
+  };
+  root.addEventListener("pointerover", boundTooltipShow);
+  root.addEventListener("focusin", boundTooltipShow);
+  root.addEventListener("pointerout", boundTooltipHide);
+  root.addEventListener("focusout", boundTooltipHide);
+  if (viewport) viewport.addEventListener("scroll", hideTooltip, { passive: true });
+
   const dateInput = root.querySelector("[data-epg-date]");
   if (dateInput && onSelectDate) {
     dateInput.addEventListener("change", () => onSelectDate(dateInput.value));
   }
-}
-
-export function renderEPGDetail(root, { entry, channel, planItem, isPlayable }) {
-  const mount = root?.querySelector("[data-epg-detail]");
-  if (!mount) return;
-  if (!entry) {
-    mount.innerHTML = "";
-    return;
-  }
-  const now = Date.now();
-  const isLive = Date.parse(entry.start_time) <= now && now < Date.parse(entry.end_time);
-  mount.innerHTML = `
-    <article class="epg-detail">
-      <div class="epg-detail-head">
-        <div>
-          <span class="eyebrow">${escapeHtml(channel?.name || "Programme")}</span>
-          <h3>${escapeHtml(entry.title)}</h3>
-        </div>
-        <button type="button" class="ghost-button" data-epg-detail-close>Close</button>
-      </div>
-      <div class="epg-detail-meta">
-        <span class="live-badge ${isLive ? "is-live" : ""}">${isLive ? "Live now" : "Scheduled"}</span>
-        <span>${escapeHtml(formatTime(entry.start_time))} - ${escapeHtml(formatTime(entry.end_time))}</span>
-        ${entry.category ? `<span>${escapeHtml(entry.category)}</span>` : ""}
-      </div>
-      ${planItem ? `<p class="epg-detail-plan">&#9733; This programme is part of your accepted My Channel lineup.${planItem.recommendationReason ? ` ${escapeHtml(planItem.recommendationReason)}` : ""}</p>` : ""}
-      <p class="epg-detail-description">${escapeHtml(entry.description || "No description is published for this programme.")}</p>
-      ${isLive && isPlayable
-        ? `<button type="button" class="primary-button" data-epg-watch-channel="${channel.id}">Watch Live</button>`
-        : `<span class="muted">${isLive ? "This channel is not currently playable." : "Not on air yet."}</span>`}
-    </article>
-  `;
 }

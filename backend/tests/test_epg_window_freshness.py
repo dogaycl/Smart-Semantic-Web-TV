@@ -80,8 +80,10 @@ def test_requests_for_an_uncovered_day_trigger_a_sync(db_session, monkeypatch, s
 
     calls = _record_syncs(monkeypatch, sync_service)
 
-    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    sync_service.ensure_ready(db=db_session, window_start=tomorrow, window_end=tomorrow + timedelta(days=1))
+    # Two days out, so the single stored entry near "now" cannot bleed across the day boundary
+    # into the requested window when the suite happens to run close to midnight UTC.
+    target_day = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+    sync_service.ensure_ready(db=db_session, window_start=target_day, window_end=target_day + timedelta(days=1))
 
     assert len(calls) == 1, "a day with no stored entries must be fetched"
 

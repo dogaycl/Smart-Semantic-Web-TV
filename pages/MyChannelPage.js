@@ -1,12 +1,28 @@
 import { getCurrentUser } from "../contexts/authContext.js";
-import { api } from "../services/api.js?v=31";
+import { api } from "../services/api.js?v=55";
+import { VideoPlayer, cleanupVideoPlayer, mountVideoPlayer } from "../components/VideoPlayer.js?v=55";
+import { mountPlayerAdapter, renderPlaybackSurface } from "../components/playerAdapters.js";
 
+let lineupAdapter = null;
+let lineupAdvanceTimer = null;
+
+function cleanupLineupPlayer() {
+  window.clearTimeout(lineupAdvanceTimer);
+  lineupAdvanceTimer = null;
+  cleanupVideoPlayer();
+  lineupAdapter?.destroy?.();
+  lineupAdapter = null;
+}
+
+// The "When?" buttons are quick fills for the always-visible date/start/end inputs below them,
+// not separate modes. The window is always read from those three fields.
 const WHEN_OPTIONS = [
   { id: "now", label: "Now" },
   { id: "tonight", label: "Tonight" },
-  { id: "tomorrow", label: "Tomorrow" },
-  { id: "custom", label: "Custom time" }
+  { id: "tomorrow", label: "Tomorrow" }
 ];
+
+const DEFAULT_WINDOW_MINUTES = 180;
 
 const DURATION_OPTIONS = [
   { id: "60", label: "1 hour" },
@@ -49,53 +65,46 @@ function roundToNext5Minutes(date) {
   return new Date(Math.ceil(date.getTime() / stepMs) * stepMs);
 }
 
-function computeWindow(state) {
+// Quick-fill values for the date/start/end inputs. "Now"/"Tonight" late in the evening produce
+// an end time past midnight, which computeWindow and the backend both read as a next-day window.
+function presetWindow(mode) {
   const now = new Date();
   let start;
-  if (state.whenMode === "now") {
+  if (mode === "now") {
     start = roundToNext5Minutes(now);
-  } else if (state.whenMode === "tonight") {
-    const tonight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0, 0, 0);
-    start = now > tonight ? roundToNext5Minutes(now) : tonight;
-  } else if (state.whenMode === "tomorrow") {
+  } else if (mode === "tomorrow") {
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 19, 0, 0, 0);
   } else {
-    const [year, month, day] = (state.customDate || toDateValue(now)).split("-").map(Number);
-    const [hour, minute] = (state.customStart || "19:00").split(":").map(Number);
-    start = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
+    const tonight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 0, 0, 0);
+    start = now > tonight ? roundToNext5Minutes(now) : tonight;
+  }
+  const end = addMinutes(start, DEFAULT_WINDOW_MINUTES);
+  return { date: toDateValue(start), start: toTimeValue(start), end: toTimeValue(end) };
+}
+
+function computeWindow(state) {
+  const now = new Date();
+  const [year, month, day] = (state.customDate || toDateValue(now)).split("-").map(Number);
+  const [startHour, startMinute] = (state.customStart || "19:00").split(":").map(Number);
+  const [endHour, endMinute] = (state.customEnd || "22:00").split(":").map(Number);
+
+  const start = new Date(year, (month || 1) - 1, day || 1, startHour || 0, startMinute || 0, 0, 0);
+  const end = new Date(year, (month || 1) - 1, day || 1, endHour || 0, endMinute || 0, 0, 0);
+  // An end time at or before the start time means the window runs past midnight into the next
+  // day. The EPG feed covers 48h ahead, so a cross-midnight window is fine.
+  if (end <= start) {
+    end.setDate(end.getDate() + 1);
   }
 
-  if (state.whenMode === "custom") {
-    const [endHour, endMinute] = (state.customEnd || "22:00").split(":").map(Number);
-    const end = new Date(
-      start.getFullYear(),
-      start.getMonth(),
-      start.getDate(),
-      endHour || 0,
-      endMinute || 0,
-      0,
-      0
-    );
-    const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
-    return { start, end, durationMinutes };
-  }
-
-  let durationMinutes = state.durationMode === "custom"
+  const windowMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  const desiredMinutes = state.durationMode === "custom"
     ? Math.max(15, Number(state.customDuration) || 60)
     : Number(state.durationMode);
-  let end = addMinutes(start, durationMinutes);
+  // "How much time?" is a cap on how much content to schedule inside the window; it can never
+  // exceed the window itself (the backend rejects that).
+  const durationMinutes = Math.max(15, Math.min(desiredMinutes, windowMinutes));
 
-  const endOfDay = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 45, 0, 0);
-  if (end > endOfDay) {
-    end = endOfDay;
-    durationMinutes = Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000));
-  }
-  if (end <= start) {
-    end = addMinutes(start, 15);
-    durationMinutes = 15;
-  }
-
-  return { start, end, durationMinutes };
+  return { start, end, windowMinutes, durationMinutes };
 }
 
 function formatClock(date, timezone) {
@@ -112,16 +121,6 @@ function formatWindow(dateStart, dateEnd, timezone) {
   return `${dateLabel} • ${formatClock(dateStart, timezone)} - ${formatClock(dateEnd, timezone)}`;
 }
 
-function typeInfo(item) {
-  const category = (item.category || "").toLowerCase();
-  const genres = (item.genres || []).map((genre) => genre.toLowerCase());
-  const isDocumentary = category.includes("documentary") || genres.includes("documentary");
-  if (item.resultType === "live_program") return { cls: "live", label: "LIVE" };
-  if (isDocumentary) return { cls: "documentary", label: "DOCUMENTARY" };
-  if (item.resultType === "series") return { cls: "series", label: "SERIES" };
-  return { cls: "movie", label: "MOVIE" };
-}
-
 function liveTiming(item, now) {
   if (item.resultType !== "live_program") return null;
   const start = new Date(item.availabilityStart || item.plannedStart);
@@ -131,39 +130,67 @@ function liveTiming(item, now) {
   return "ended";
 }
 
-function planItemCard(item, timezone, now) {
-  const { cls, label } = typeInfo(item);
+// The lineup plays like a channel: start on the item scheduled for "now", or - if the whole
+// lineup is still ahead or already finished - the first or last item respectively.
+function pickNowPlayingIndex(items, now = new Date()) {
+  if (!items.length) return 0;
+  const running = items.findIndex((item) => {
+    const end = new Date(item.plannedEnd);
+    return now < end;
+  });
+  return running === -1 ? items.length - 1 : running;
+}
+
+function playableItem(item) {
+  if (!item) return false;
+  if (item.resultType === "live_program") return Boolean(item.liveChannelId);
+  return Boolean(item.contentSlug);
+}
+
+// Simplify the type badge to the three states the timeline shows: LIVE / MOVIE / SERIES.
+function timelineBadge(item) {
+  if (item.resultType === "live_program") return { cls: "live", label: "LIVE" };
+  if (item.resultType === "series") return { cls: "series", label: "SERIES" };
+  return { cls: "movie", label: "MOVIE" };
+}
+
+function planItemCard(item, timezone, now, index = 0) {
+  const { cls, label } = timelineBadge(item);
   const timing = liveTiming(item, now);
+  const isLive = item.resultType === "live_program";
   const badgeLabel = timing === "now" ? "LIVE NOW" : label;
-  const badgeClass = timing === "now" ? `${cls} is-now` : cls;
-  const timeRange = `${formatClock(new Date(item.plannedStart), timezone)} - ${formatClock(new Date(item.plannedEnd), timezone)}`;
+  const badgeClass = timing === "now" && isLive ? `${cls} is-now` : cls;
+  const startClock = formatClock(new Date(item.plannedStart), timezone);
+  const endClock = formatClock(new Date(item.plannedEnd), timezone);
 
-  let statusLine = timeRange;
-  let watchAction = `<a class="primary-button" href="${item.routePath}"${item.liveChannelId ? ` data-planner-live-channel="${item.liveChannelId}"` : ""}>${item.resultType === "live_program" ? "Watch Live" : "Watch"}</a>`;
+  let statusNote = "";
+  if (timing === "upcoming") statusNote = `Starts ${startClock}`;
+  else if (timing === "ended") statusNote = "Already ended";
+  else if (timing === "now") statusNote = "On now";
 
-  if (timing === "upcoming") {
-    statusLine = `Starts at ${formatClock(new Date(item.plannedStart), timezone)} &middot; ${timeRange}`;
-  } else if (timing === "ended") {
-    statusLine = `Already ended &middot; ${timeRange}`;
+  // A playable item plays inside the My Channel player at the top; anything else keeps the
+  // normal link to its detail/live page.
+  let watchAction = playableItem(item)
+    ? `<button class="primary-button" type="button" data-planner-play-index="${index}">${isLive ? "Watch Live" : "Watch"}</button>`
+    : `<a class="primary-button" href="${item.routePath}">Watch</a>`;
+  if (timing === "ended" && !playableItem(item)) {
     watchAction = `<a class="ghost-button" href="#/live-tv">Open Live TV</a>`;
   }
 
   return `
-    <article class="planner-plan-item ${timing === "ended" ? "muted" : ""}">
-      <div class="planner-plan-time">${statusLine}</div>
-      <div class="planner-plan-body">
-        <div class="planner-plan-head">
-          <span class="planner-type-badge ${badgeClass}">${badgeLabel}</span>
-          <strong>${item.title}</strong>
-        </div>
-        <p class="planner-why-this">Why this? ${item.recommendationReason}</p>
-        <div class="planner-plan-meta">
-          <span>${item.category}</span>
-          <span>${item.runtimeDisplay}</span>
-          ${item.channel?.name ? `<span>${item.channel.name}</span>` : ""}
-        </div>
-        ${watchAction}
+    <article class="planner-plan-item planner-timeline-item ${timing === "ended" ? "muted" : ""}" data-planner-item-index="${index}">
+      <div class="planner-timeline-slot">
+        <span class="planner-timeline-clock">${startClock} &ndash; ${endClock}</span>
+        ${statusNote ? `<span class="planner-timeline-note">${statusNote}</span>` : ""}
       </div>
+      <div class="planner-timeline-head">
+        <span class="planner-type-badge ${badgeClass}">${badgeLabel}</span>
+        <span class="planner-timeline-runtime">${item.runtimeDisplay}</span>
+      </div>
+      <strong class="planner-timeline-title">${item.title}</strong>
+      ${isLive && item.channel?.name ? `<span class="planner-timeline-channel">${item.channel.name}</span>` : `<span class="planner-timeline-channel muted">${item.category}</span>`}
+      <p class="planner-why-this">${item.recommendationReason || "Matched to your profile."}</p>
+      <div class="planner-timeline-action">${watchAction}</div>
     </article>
   `;
 }
@@ -189,7 +216,20 @@ function renderPlan(plan, timezone) {
   }
 
   const now = new Date();
+  const hasPlayable = plan.items.some(playableItem);
   return `
+    ${hasPlayable ? `
+    <div class="planner-now-playing" data-planner-player-shell>
+      <div class="planner-player-surface" data-planner-player>
+        <div class="planner-player-loading">Tuning your channel&hellip;</div>
+      </div>
+      <div class="planner-player-bar">
+        <button class="ghost-button" type="button" data-planner-prev>&#9664; Prev</button>
+        <div class="planner-player-now" data-planner-now></div>
+        <button class="ghost-button" type="button" data-planner-next>Next &#9654;</button>
+      </div>
+    </div>
+    ` : ""}
     <div class="planner-result-summary">
       <span class="eyebrow">My Channel</span>
       <h2>${plan.summary}</h2>
@@ -205,8 +245,23 @@ function renderPlan(plan, timezone) {
           : `<button class="primary-button" type="button" data-accept-plan-id="${plan.id}">Accept This Lineup</button>`}
       </div>
     </div>
-    <div class="planner-plan-list">
-      ${plan.items.map((item) => planItemCard(item, timezone, now)).join("")}
+  `;
+}
+
+// The lineup itself renders as a full-width horizontal strip below the two side-by-side cards,
+// so it always has room to scroll horizontally regardless of the studio column widths.
+function renderPlanStrip(plan, timezone) {
+  if (!plan || !plan.items?.length) return "";
+  const now = new Date();
+  return `
+    <div class="planner-lineup-head">
+      <span class="eyebrow">Your lineup</span>
+      <h3>${plan.items.length} ${plan.items.length === 1 ? "programme" : "programmes"} &middot; scroll to browse</h3>
+    </div>
+    <div class="planner-timeline-scroll">
+      <ol class="planner-timeline">
+        ${plan.items.map((item, index) => planItemCard(item, timezone, now, index)).join("")}
+      </ol>
     </div>
   `;
 }
@@ -216,11 +271,11 @@ export function MyChannelPage() {
   const savedCategories = (user?.preferredCategories?.length ? user.preferredCategories : ["Technology", "Sports", "Music"]);
   const moodChips = Array.from(new Set([...savedCategories, ...MOOD_CATEGORIES])).slice(0, 10);
 
+  const initialWindow = presetWindow("tonight");
   const state = {
-    whenMode: "tonight",
-    customDate: toDateValue(new Date()),
-    customStart: "19:00",
-    customEnd: "22:00",
+    customDate: initialWindow.date,
+    customStart: initialWindow.start,
+    customEnd: initialWindow.end,
     durationMode: "180",
     customDuration: 180,
     selectedCategories: new Set(savedCategories),
@@ -233,24 +288,121 @@ export function MyChannelPage() {
     const resultMount = document.querySelector("[data-planner-result]");
     const savedMount = document.querySelector("[data-planner-saved]");
     const statusMount = document.querySelector("[data-planner-status]");
-    const customWhenMount = document.querySelector("[data-when-custom]");
     const customDurationMount = document.querySelector("[data-duration-custom]");
     const windowPreviewMount = document.querySelector("[data-my-channel-window]");
+    const dateInput = document.querySelector("[name=customDate]");
+    const startInput = document.querySelector("[name=customStart]");
+    const endInput = document.querySelector("[name=customEnd]");
 
-    const bindLiveLinks = () => {
-      document.querySelectorAll("[data-planner-live-channel]").forEach((element) => {
-        element.addEventListener("click", () => {
-          sessionStorage.setItem("synapse.live.channel-id", element.dataset.plannerLiveChannel);
-        });
-      });
-    };
+    // Stop the lineup player when leaving the page so a stream does not keep running in the background.
+    window.addEventListener("hashchange", cleanupLineupPlayer, { once: true });
 
     let savedPlans = [];
     let activePlan = null;
+    let lineupToken = 0;
+
+    // Plays the accepted/generated lineup like a channel: the item scheduled for "now" starts
+    // automatically, and playback rolls on to the next item when a live programme's slot ends or
+    // an on-demand title finishes.
+    const lineupPlayer = {
+      index: 0,
+      async load(index) {
+        const items = activePlan?.items || [];
+        if (!items.length) return;
+        this.index = Math.max(0, Math.min(index, items.length - 1));
+        const item = items[this.index];
+        const token = ++lineupToken;
+
+        cleanupLineupPlayer();
+        const surface = document.querySelector("[data-planner-player]");
+        const nowBar = document.querySelector("[data-planner-now]");
+        if (!surface) return;
+
+        document.querySelectorAll("[data-planner-item-index]").forEach((node) => {
+          node.classList.toggle("is-playing", Number(node.dataset.plannerItemIndex) === this.index);
+        });
+        if (nowBar) {
+          nowBar.innerHTML = `<span class="planner-now-label">Now playing</span> <strong>${item.title}</strong>${item.channel?.name ? ` &middot; ${item.channel.name}` : ""}`;
+        }
+        surface.innerHTML = `<div class="planner-player-loading">Tuning your channel&hellip;</div>`;
+
+        try {
+          if (item.resultType === "live_program" && item.liveChannelId) {
+            const live = await api.getChannelLive(item.liveChannelId);
+            if (token !== lineupToken) return;
+            if (!live || !live.playback || live.playback.type === "unavailable") {
+              throw new Error(live?.stream_error || "This channel is not available right now.");
+            }
+            surface.innerHTML = VideoPlayer(live);
+            await mountVideoPlayer(live, {
+              onPlaybackFailure: () => this.showUnplayable(item, "This live stream could not start in the browser.")
+            });
+            // Roll to the next item when this programme's scheduled slot ends.
+            const msToEnd = new Date(item.plannedEnd).getTime() - Date.now();
+            if (msToEnd > 0 && msToEnd < 6 * 60 * 60 * 1000 && this.index < items.length - 1) {
+              lineupAdvanceTimer = window.setTimeout(() => this.load(this.index + 1), msToEnd + 1000);
+            }
+          } else if (item.contentSlug) {
+            const playback = await api.getContentPlayback(item.contentSlug);
+            if (token !== lineupToken) return;
+            const source = playback?.primarySource || playback?.sources?.[0] || null;
+            if (!playback?.playbackAvailable || !source) {
+              throw new Error(playback?.message || "No playable source for this title yet.");
+            }
+            surface.innerHTML = `<div class="planner-player-surface-inner">${renderPlaybackSurface(source, item.title)}</div>`;
+            lineupAdapter = await mountPlayerAdapter({
+              source,
+              root: surface.querySelector(".planner-player-surface-inner"),
+              onStateChange: ({ state: playerState }) => {
+                if (playerState === "ended" && this.index < items.length - 1) {
+                  this.load(this.index + 1);
+                }
+              },
+              onError: () => this.showUnplayable(item, "This title could not be played in the browser.")
+            });
+            await lineupAdapter?.play?.().catch(() => {});
+          } else {
+            this.showUnplayable(item, "This item has no in-page player.");
+          }
+        } catch (error) {
+          if (token !== lineupToken) return;
+          this.showUnplayable(item, error?.message || "This item could not be played.");
+        }
+      },
+      showUnplayable(item, message) {
+        const surface = document.querySelector("[data-planner-player]");
+        if (!surface) return;
+        surface.innerHTML = `
+          <div class="planner-player-fallback">
+            <strong>${item.title}</strong>
+            <p>${message}</p>
+            <a class="ghost-button" href="${item.routePath || "#/live-tv"}">Open ${item.resultType === "live_program" ? "Live TV" : "watch page"}</a>
+          </div>
+        `;
+      },
+      bind() {
+        const shell = document.querySelector("[data-planner-player-shell]");
+        if (!shell) return;
+        shell.querySelector("[data-planner-prev]")?.addEventListener("click", () => this.load(this.index - 1));
+        shell.querySelector("[data-planner-next]")?.addEventListener("click", () => this.load(this.index + 1));
+        document.querySelectorAll("[data-planner-play-index]").forEach((button) => {
+          button.addEventListener("click", () => this.load(Number(button.dataset.plannerPlayIndex)));
+        });
+      },
+      start() {
+        if (!document.querySelector("[data-planner-player-shell]")) return;
+        this.bind();
+        this.load(pickNowPlayingIndex(activePlan?.items || []));
+      }
+    };
 
     const drawResult = () => {
+      cleanupLineupPlayer();
+      lineupToken += 1;
       resultMount.innerHTML = renderPlan(activePlan, timezone);
-      bindLiveLinks();
+      const stripMount = document.querySelector("[data-planner-lineup-strip]");
+      if (stripMount) stripMount.innerHTML = renderPlanStrip(activePlan, timezone);
+      lineupPlayer.start();
       document.querySelector("[data-accept-plan-id]")?.addEventListener("click", async (event) => {
         const button = event.currentTarget;
         button.disabled = true;
@@ -298,15 +450,11 @@ export function MyChannelPage() {
     };
 
     const syncControlVisibility = () => {
-      customWhenMount.hidden = state.whenMode !== "custom";
-      customDurationMount.hidden = state.whenMode === "custom" || state.durationMode !== "custom";
+      customDurationMount.hidden = state.durationMode !== "custom";
     };
 
     const drawControls = () => {
-      const { start, end, durationMinutes } = computeWindow(state);
-      document.querySelectorAll("[data-when-option]").forEach((button) => {
-        button.classList.toggle("active", button.dataset.whenOption === state.whenMode);
-      });
+      const { start, end, windowMinutes, durationMinutes } = computeWindow(state);
       document.querySelectorAll("[data-duration-option]").forEach((button) => {
         button.classList.toggle("active", button.dataset.durationOption === state.durationMode);
       });
@@ -315,14 +463,20 @@ export function MyChannelPage() {
       });
       syncControlVisibility();
       if (windowPreviewMount) {
-        const durationText = durationMinutes > 0 ? `${durationMinutes} min` : "Invalid window";
-        windowPreviewMount.textContent = `Window: ${formatWindow(start, end, timezone)} • ${durationText}`;
+        const capNote = durationMinutes < windowMinutes ? ` • plan up to ${durationMinutes} min` : "";
+        windowPreviewMount.textContent = `Window: ${formatWindow(start, end, timezone)} • ${windowMinutes} min${capNote}`;
       }
     };
 
     controlsMount.querySelectorAll("[data-when-option]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.whenMode = button.dataset.whenOption;
+        const filled = presetWindow(button.dataset.whenOption);
+        state.customDate = filled.date;
+        state.customStart = filled.start;
+        state.customEnd = filled.end;
+        if (dateInput) dateInput.value = filled.date;
+        if (startInput) startInput.value = filled.start;
+        if (endInput) endInput.value = filled.end;
         drawControls();
       });
     });
@@ -432,34 +586,34 @@ export function MyChannelPage() {
           <form class="planner-form" data-my-channel-form>
             <div class="my-channel-quick-controls" data-my-channel-controls>
               <label>
-                <span>When?</span>
+                <span>When are you free?</span>
                 <div class="my-channel-quick-row">
                   ${WHEN_OPTIONS.map((option) => `<button type="button" class="chip" data-when-option="${option.id}">${option.label}</button>`).join("")}
                 </div>
-                <div class="planner-form-grid" data-when-custom hidden>
+                <div class="planner-form-grid" data-when-fields>
                   <label>
                     <span>Date</span>
-                    <input class="input" name="customDate" type="date" value="${toDateValue(new Date())}" />
+                    <input class="input" name="customDate" type="date" value="${state.customDate}" />
                   </label>
                   <label>
                     <span>Start time</span>
-                    <input class="input" name="customStart" type="time" value="19:00" />
+                    <input class="input" name="customStart" type="time" value="${state.customStart}" />
                   </label>
                   <label>
                     <span>End time</span>
-                    <input class="input" name="customEnd" type="time" value="22:00" />
+                    <input class="input" name="customEnd" type="time" value="${state.customEnd}" />
                   </label>
                 </div>
               </label>
               <label>
-                <span>How much time?</span>
+                <span>How much of it do you want to fill?</span>
                 <div class="my-channel-quick-row">
                   ${DURATION_OPTIONS.map((option) => `<button type="button" class="chip" data-duration-option="${option.id}">${option.label}</button>`).join("")}
                 </div>
                 <div class="planner-form-grid" data-duration-custom hidden>
                   <label>
                     <span>Minutes</span>
-                    <input class="input" name="customDuration" type="number" min="15" max="720" value="180" />
+                    <input class="input" name="customDuration" type="number" min="15" max="720" value="${state.customDuration}" />
                   </label>
                 </div>
                 <p class="my-channel-window-preview" data-my-channel-window></p>
@@ -486,6 +640,8 @@ export function MyChannelPage() {
           <div data-planner-result></div>
         </article>
       </section>
+
+      <section class="planner-lineup-strip" data-planner-lineup-strip></section>
 
       <section class="ai-workbench">
         <article class="ai-workbench-card">

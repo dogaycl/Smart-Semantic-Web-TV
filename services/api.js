@@ -74,6 +74,16 @@ export async function apiRequest(path, { method = "GET", body, token, headers = 
   }
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      // The token we sent was rejected (expired or invalid). Drop it and let the app return to
+      // the login screen instead of surfacing a raw "Invalid or expired token" in a data panel.
+      try {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      } catch {
+        // Ignore storage access errors; the auth:expired listener still resets in-memory state.
+      }
+      document.dispatchEvent(new CustomEvent("auth:expired"));
+    }
     throw new ApiError(
       normalizeErrorMessage(payload, "Request failed."),
       response.status,
@@ -110,10 +120,17 @@ async function getCatalogCache({ force = false } = {}) {
   if (catalogCache && !force) return catalogCache;
   if (catalogCachePromise && !force) return catalogCachePromise;
 
-  catalogCachePromise = fetchCatalogList("/api/catalog", {
-    sort: "popularity_desc",
-    limit: 300
-  })
+  // "playable_desc" keeps the handful of actually-watchable titles (real playback source)
+  // at the front of the cached set, then popularity — so On Demand can surface them even
+  // though most of them are older / low-popularity films outside the top 300. An older
+  // backend that does not know this sort value 422s, so fall back to popularity ordering.
+  catalogCachePromise = fetchCatalogList("/api/catalog", { sort: "playable_desc", limit: 300 })
+    .catch((error) => {
+      if (error instanceof ApiError && (error.status === 422 || error.status === 400)) {
+        return fetchCatalogList("/api/catalog", { sort: "popularity_desc", limit: 300 });
+      }
+      throw error;
+    })
     .then((payload) => {
       catalogCache = payload.items;
       return catalogCache;
@@ -549,7 +566,7 @@ export const api = {
     const items = await getCatalogCache();
     return filterCatalogForAi(items, preferences);
   },
-  async searchSemantic(query, { limit = 12, windowHours = 24 } = {}) {
+  async searchSemantic(query, { limit = 12, windowHours = 24, mood = null } = {}) {
     const token = getStoredToken();
     const payload = await apiRequest("/api/search/semantic", {
       method: "POST",
@@ -557,7 +574,8 @@ export const api = {
       body: {
         query,
         limit,
-        window_hours: windowHours
+        window_hours: windowHours,
+        ...(mood ? { mood } : {})
       }
     });
     return (payload.results || []).map(normalizeDiscoveryResult);

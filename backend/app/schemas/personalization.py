@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.user import UserRead
+from app.schemas.user import AVATAR_MAX_LENGTH, UserRead, validate_avatar_reference
 
 ContentType = Literal["content", "program"]
 
@@ -48,9 +48,14 @@ class WatchHistoryRead(BaseModel):
 
 class UserProfileUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
-    avatar_url: HttpUrl | None = None
+    avatar_url: str | None = Field(default=None, max_length=AVATAR_MAX_LENGTH)
     interests: list[str] | None = None
     preferred_categories: list[str] | None = None
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _validate_avatar(cls, value: str | None) -> str | None:
+        return validate_avatar_reference(value)
 
 
 class UserProfileUpdateResponse(UserRead):

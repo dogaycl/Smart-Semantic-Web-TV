@@ -1,8 +1,8 @@
 import re
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.schemas.user import UserRead
+from app.schemas.user import AVATAR_MAX_LENGTH, UserRead, validate_avatar_reference
 
 USERNAME_PATTERN = r"^[A-Za-z0-9_.-]+$"
 
@@ -12,9 +12,14 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
-    avatar_url: HttpUrl | None = None
+    avatar_url: str | None = Field(default=None, max_length=AVATAR_MAX_LENGTH)
     interests: list[str] = Field(default_factory=list)
     preferred_categories: list[str] = Field(default_factory=list)
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _validate_avatar(cls, value: str | None) -> str | None:
+        return validate_avatar_reference(value)
 
     @field_validator("password")
     @classmethod

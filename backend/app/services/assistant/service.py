@@ -125,9 +125,11 @@ class AssistantService:
                 "chunk_id": chunk.chunk_id,
                 "source_type": chunk.source_type,
                 "title": chunk.title,
-                "text": chunk.text,
+                # Cap each chunk so the prompt (and therefore the generation latency) stays bounded;
+                # the useful signal for a one-paragraph answer is in the first few hundred chars.
+                "text": chunk.text if len(chunk.text) <= 600 else chunk.text[:597].rstrip() + "...",
             }
-            for chunk in context.chunks
+            for chunk in context.chunks[:5]
         ]
 
         return (
@@ -157,12 +159,7 @@ class AssistantService:
         answer_parts = []
 
         if context.context_type == "catalog":
-            if context.description:
-                answer_parts.append(f"{context.title} is described as: {context.description}")
-            if context.category_label:
-                answer_parts.append(f"It is classified under {context.category_label}.")
-            if top_chunk and top_chunk.source_type == "credits_metadata":
-                answer_parts.append(top_chunk.text)
+            answer_parts.extend(self._catalog_fallback_parts(payload=payload, context=context))
         elif context.context_type == "program":
             answer_parts.append(
                 f"{context.title} is the current program context on {context.channel_name or 'the selected channel'}."
@@ -193,6 +190,43 @@ class AssistantService:
             cited_chunk_ids=[chunk.chunk_id for chunk in context.chunks[:3]],
             follow_up_questions=self._default_follow_ups(context=context),
         )
+
+    def _catalog_fallback_parts(
+        self,
+        *,
+        payload: AssistantChatRequest,
+        context: RetrievedContext,
+    ) -> list[str]:
+        """Answer common movie/series questions straight from the retrieved metadata chunks.
+
+        Used when Gemini is unavailable so a question like "who directed this" still gets a real
+        answer (the crew chunk carries roles, e.g. "Denis Villeneuve (Director)") instead of only
+        echoing the overview.
+        """
+        def chunk_by_prefix(prefix: str) -> str | None:
+            return next((c.text for c in context.chunks if c.chunk_id.startswith(prefix)), None)
+
+        message = payload.message.lower()
+        parts: list[str] = []
+
+        wants_people = any(word in message for word in ("direct", "who made", "who created", "writer", "cast", "star", "actor", "actress", "play", "crew"))
+        credits = chunk_by_prefix("catalog-credits:")
+        if wants_people and credits:
+            parts.append(f"For {context.title}, {credits[0].lower()}{credits[1:]}")
+
+        wants_facts = any(word in message for word in ("genre", "how long", "runtime", "length", "year", "release", "language", "when"))
+        metadata = chunk_by_prefix("catalog-metadata:")
+        if wants_facts and metadata:
+            parts.append(f"{context.title} — {metadata}")
+
+        if not parts:
+            if context.description:
+                parts.append(f"{context.title}: {context.description}")
+            if context.category_label:
+                parts.append(f"It is classified under {context.category_label}.")
+            if credits:
+                parts.append(credits)
+        return parts
 
     def _default_follow_ups(self, *, context: RetrievedContext) -> list[str]:
         if context.context_type == "catalog":

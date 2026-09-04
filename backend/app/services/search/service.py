@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime, timezone
+import logging
 import math
 
 from sqlalchemy.orm import Session
@@ -13,8 +14,11 @@ from app.schemas.discovery import SemanticSearchResponse
 from app.services.search.embeddings.base import EmbeddingService
 from app.services.search.embeddings.gemini import GeminiEmbeddingService
 from app.services.search.index_service import SearchIndexService
+from app.services.search.mood import MoodProfile, resolve_mood, score_document_for_mood
 from app.services.search.query_parser import QueryIntent, QueryParser, normalize_text, tokenize_text
 from app.services.search.result_builder import DiscoveryResultBuilder
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticSearchService:
@@ -42,9 +46,11 @@ class SemanticSearchService:
         query: str,
         limit: int,
         window_hours: int | None = None,
+        mood: str | None = None,
     ) -> SemanticSearchResponse:
         self.index_service.ensure_ready(db=db)
         intent = self.query_parser.parse(query, now=datetime.now(timezone.utc), window_hours=window_hours)
+        mood_profile = resolve_mood(mood)
         documents = self.search_repository.list_active(db=db)
         semantic_scores = self._semantic_scores(db=db, query=intent.raw_query, limit=max(limit * 8, 40))
         profile_terms = self._user_profile_terms(user)
@@ -56,6 +62,7 @@ class SemanticSearchService:
                 intent=intent,
                 semantic_scores=semantic_scores,
                 profile_terms=profile_terms,
+                mood_profile=mood_profile,
             )
             if score <= 0:
                 continue
@@ -74,6 +81,8 @@ class SemanticSearchService:
             filters.append("prioritize live and upcoming EPG results")
         if intent.preferred_categories:
             filters.append(f"category hints: {', '.join(intent.preferred_categories)}")
+        if mood_profile is not None:
+            filters.append(f"mood ranking: {mood_profile.label.lower()}")
 
         return SemanticSearchResponse(
             query=query,
@@ -86,7 +95,14 @@ class SemanticSearchService:
         if not self.embedding_service.is_configured():
             return {}
 
-        query_embedding = self.embedding_service.embed_query(query)
+        try:
+            query_embedding = self.embedding_service.embed_query(query)
+        except Exception as exc:
+            # A missing/exhausted embedding quota must not fail the whole search. Lexical,
+            # category and profile signals still rank results; only the semantic boost is lost.
+            logger.warning("Gemini embedding query failed, ranking search without semantic similarity: %s", exc)
+            return {}
+
         return {
             document.source_key: score
             for document, score in self.search_repository.semantic_candidates(
@@ -103,6 +119,7 @@ class SemanticSearchService:
         intent: QueryIntent,
         semantic_scores: dict[str, float],
         profile_terms: list[str],
+        mood_profile: MoodProfile | None = None,
     ) -> tuple[float, str]:
         if intent.max_duration_minutes is not None and document.duration_minutes is not None:
             if document.duration_minutes > intent.max_duration_minutes:
@@ -142,20 +159,38 @@ class SemanticSearchService:
         if intent.prioritize_live and document.document_type != "epg":
             vod_penalty = 0.08
 
+        mood_score = 0.0
+        mood_reason = ""
+        if mood_profile is not None:
+            mood_score, mood_reason = score_document_for_mood(
+                profile=mood_profile,
+                genres=document.genres or [],
+                category_label=document.category_label,
+                document_tokens=document_tokens,
+            )
+
         semantic_score = max(semantic_scores.get(document.source_key, 0.0), lexical_score)
+        base_weight = 0.58 if mood_profile is None else 0.44
         score = (
-            (semantic_score * 0.58)
+            (semantic_score * base_weight)
             + (lexical_score * 0.18)
             + (category_score * 0.12)
             + (profile_score * 0.07)
             + live_bonus
             - vod_penalty
         )
+        if mood_profile is not None:
+            # Mood affinity is a first-class ranking signal: a strong genre/keyword match lifts
+            # a title, and matching an avoided genre/keyword pushes it down the list.
+            score += mood_score * 0.42
         score = round(min(score, 1.0), 6)
-        if score <= 0.08:
+        cutoff = 0.08 if mood_profile is None else 0.05
+        if score <= cutoff:
             return 0.0, ""
 
         reasons = []
+        if mood_reason:
+            reasons.append(mood_reason)
         if intent.prioritize_live and document.document_type == "epg":
             reasons.append(f"Upcoming on {document.channel_name}.")
         if category_score > 0:
@@ -166,8 +201,10 @@ class SemanticSearchService:
             reasons.append("Strong semantic match for your query.")
         if not reasons and lexical_score > 0:
             reasons.append("Matches the topic keywords in your request.")
+        if not reasons and mood_profile is not None:
+            reasons.append(f"Ranked for your {mood_profile.label.lower()} mood.")
 
-        return score, reasons[0]
+        return score, reasons[0] if reasons else "Matches your search."
 
     def _user_profile_terms(self, user: User | None) -> list[str]:
         if user is None or user.profile is None:

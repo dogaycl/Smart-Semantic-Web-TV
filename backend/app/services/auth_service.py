@@ -34,7 +34,7 @@ class AuthService:
             profile = self.user_profile_repository.create(
                 user_id=user.id,
                 display_name=payload.display_name or payload.username,
-                avatar_url=str(payload.avatar_url) if payload.avatar_url else None,
+                avatar_url=payload.avatar_url,
                 interests=payload.interests,
                 preferred_categories=payload.preferred_categories,
             )

@@ -8,8 +8,10 @@ from app.models.channel import Channel
 from app.repositories.channel_repository import ChannelRepository
 from app.repositories.epg_entry_repository import EPGEntryRepository
 from app.schemas.live_tv import EPGChannelRead, EPGEntryRead, EPGWindowResponse
+from app.services.epg.providers.tr_synopsis_provider import TRSynopsisProvider, normalize_title
 from app.services.epg.providers.xmltv_provider import XMLTVProvider
 from app.services.epg.providers.youtube_schedule_provider import YouTubeScheduleProvider
+from app.services.live_tv.catalog import channel_seed_map
 from app.services.live_tv.service import LiveTVService
 
 
@@ -19,6 +21,7 @@ class EPGService:
         self.epg_entry_repository = EPGEntryRepository()
         self.xmltv_provider = XMLTVProvider()
         self.youtube_schedule_provider = YouTubeScheduleProvider()
+        self.tr_synopsis_provider = TRSynopsisProvider()
         self.live_tv_service = LiveTVService()
 
     def sync_epg(
@@ -94,7 +97,70 @@ class EPGService:
                 prune_end=now + timedelta(days=7),
             )
 
+        # The free XMLTV feeds carry no <desc> for Turkish channels (and do not list a few of
+        # them at all). Pull descriptions - and, where there is no feed entry, whole schedules -
+        # from the broadcaster's own "yayın akışı" page.
+        self._apply_broadcaster_schedules(
+            db=db,
+            channels=channels,
+            window_start=window_start,
+            window_end=window_end,
+        )
+
         db.commit()
+
+    def _apply_broadcaster_schedules(
+        self,
+        *,
+        db: Session,
+        channels: list[Channel],
+        window_start: datetime,
+        window_end: datetime,
+    ) -> None:
+        seeds = channel_seed_map()
+        synopsis_cache: dict[str, dict[str, str]] = {}
+        now = datetime.now(timezone.utc)
+        for channel in channels:
+            seed = seeds.get(channel.slug)
+            synopsis_url = seed.synopsis_url if seed else None
+            if not synopsis_url:
+                continue
+
+            if not channel.epg_channel_id:
+                # No XMLTV listing for this channel - the broadcaster page is the whole source.
+                broadcaster_entries = self.tr_synopsis_provider.fetch_entries(
+                    source_url=synopsis_url,
+                    window_start=window_start,
+                    window_end=window_end,
+                )
+                if broadcaster_entries:
+                    self._replace_channel_entries(
+                        db=db,
+                        channel=channel,
+                        entries=broadcaster_entries,
+                        source="broadcaster",
+                        prune_start=window_start,
+                        prune_end=window_end,
+                    )
+                continue
+
+            # XMLTV-mapped channel: keep the feed's times, add the missing descriptions.
+            if synopsis_url not in synopsis_cache:
+                synopsis_cache[synopsis_url] = self.tr_synopsis_provider.fetch_synopses(source_url=synopsis_url)
+            synopses = synopsis_cache[synopsis_url]
+            if not synopses:
+                continue
+            for entry in self.epg_entry_repository.list_for_window(
+                db=db,
+                channel_ids=[channel.id],
+                start=window_start,
+                end=window_end,
+            ):
+                # A synopsis describes the programme, so it applies to every airing of that title.
+                match = synopses.get(normalize_title(entry.title))
+                if match and (entry.description or "") != match:
+                    entry.description = match
+                    entry.last_updated_at = now
 
     def get_window(
         self,
@@ -184,6 +250,7 @@ class EPGService:
                     title=entry.title,
                     description=entry.description,
                     category=entry.category,
+                    image_url=getattr(entry, "image_url", None),
                     start_time=entry.start_time,
                     end_time=entry.end_time,
                     source=entry.source,
@@ -194,6 +261,7 @@ class EPGService:
             existing_entry.title = entry.title
             existing_entry.description = entry.description
             existing_entry.category = entry.category
+            existing_entry.image_url = getattr(entry, "image_url", None)
             existing_entry.start_time = entry.start_time
             existing_entry.end_time = entry.end_time
             existing_entry.last_updated_at = datetime.now(timezone.utc)

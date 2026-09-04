@@ -1,5 +1,5 @@
 import { isAuthenticated } from "../contexts/authContext.js";
-import { ApiError, api } from "./api.js?v=21";
+import { ApiError, api } from "./api.js?v=55";
 
 const KEY = "synapse.my-list";
 

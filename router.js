@@ -1,25 +1,25 @@
 import { getCurrentUser, initializeAuth, isAuthReady } from "./contexts/authContext.js";
-import { AppLayout } from "./components/AppLayout.js?v=25";
-import { ensureFavoritesLoaded } from "./services/favoritesService.js?v=21";
-import { LoginPage } from "./pages/LoginPage.js";
-import { RegisterPage } from "./pages/RegisterPage.js";
-import { HomePage } from "./pages/HomePage.js?v=23";
-import { LiveTvPage } from "./pages/LiveTvPage.js?v=30";
-import { LibraryPage } from "./pages/LibraryPage.js?v=26";
-import { OnDemandPage } from "./pages/OnDemandPage.js";
-import { DiscoverPage } from "./pages/DiscoverPage.js";
-import { ContentDetailPage } from "./pages/ContentDetailPage.js?v=23";
-import { WatchPage } from "./pages/WatchPage.js";
-import { WatchPartyPage } from "./pages/WatchPartyPage.js";
-import { MyListPage } from "./pages/MyListPage.js?v=23";
-import { ProfilePage } from "./pages/ProfilePage.js";
-import { ProfilesPage } from "./pages/ProfilesPage.js";
-import { StatsPage } from "./pages/StatsPage.js";
-import { AdminPage } from "./pages/AdminPage.js";
-import { SocialPage } from "./pages/SocialPage.js";
-import { HistoryPage } from "./pages/HistoryPage.js";
-import { MyChannelPage } from "./pages/MyChannelPage.js?v=30";
-import { AITuningPage } from "./pages/AITuningPage.js";
+import { AppLayout } from "./components/AppLayout.js?v=55";
+import { ensureFavoritesLoaded } from "./services/favoritesService.js?v=55";
+import { LoginPage } from "./pages/LoginPage.js?v=55";
+import { RegisterPage } from "./pages/RegisterPage.js?v=55";
+import { HomePage } from "./pages/HomePage.js?v=55";
+import { LiveTvPage } from "./pages/LiveTvPage.js?v=55";
+import { LibraryPage } from "./pages/LibraryPage.js?v=55";
+import { OnDemandPage } from "./pages/OnDemandPage.js?v=55";
+import { DiscoverPage } from "./pages/DiscoverPage.js?v=55";
+import { ContentDetailPage } from "./pages/ContentDetailPage.js?v=55";
+import { WatchPage } from "./pages/WatchPage.js?v=55";
+import { WatchPartyPage } from "./pages/WatchPartyPage.js?v=55";
+import { MyListPage } from "./pages/MyListPage.js?v=55";
+import { ProfilePage } from "./pages/ProfilePage.js?v=55";
+import { ProfilesPage } from "./pages/ProfilesPage.js?v=55";
+import { StatsPage } from "./pages/StatsPage.js?v=55";
+import { AdminPage } from "./pages/AdminPage.js?v=55";
+import { SocialPage } from "./pages/SocialPage.js?v=55";
+import { HistoryPage } from "./pages/HistoryPage.js?v=55";
+import { MyChannelPage } from "./pages/MyChannelPage.js?v=55";
+import { AITuningPage } from "./pages/AITuningPage.js?v=55";
 
 const routes = [
   { path: "/login", public: true, render: LoginPage },

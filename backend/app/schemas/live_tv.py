@@ -17,6 +17,7 @@ class ChannelProgramRead(BaseModel):
     title: str
     description: str | None = None
     category: str | None = None
+    image_url: str | None = None
     start_time: datetime
     end_time: datetime
     source: str
@@ -97,6 +98,7 @@ class EPGEntryRead(BaseModel):
     title: str
     description: str | None = None
     category: str | None = None
+    image_url: str | None = None
     start_time: datetime
     end_time: datetime
     source: str

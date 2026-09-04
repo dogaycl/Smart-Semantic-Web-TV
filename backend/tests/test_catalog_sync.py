@@ -1,5 +1,6 @@
 from datetime import date
 
+from app.models.catalog_item import CatalogItem
 from app.repositories.catalog_repository import CatalogRepository
 from app.services.catalog.providers.base import CatalogCandidate, CatalogProvider, CatalogVideoPayload, ExternalCatalogItemPayload
 from app.services.catalog.sync_service import CatalogSyncService
@@ -100,3 +101,35 @@ def test_catalog_sync_upserts_without_duplicates_and_refreshes_data(db_session):
     assert refreshed is not None
     assert refreshed.overview == "Updated canonical overview."
     assert refreshed.vote_average == 8.1
+
+
+def test_catalog_sync_does_not_deactivate_pinned_items(db_session):
+    # Curator-added movies (bulk import, wired-up playable titles) carry is_pinned=True and must
+    # survive the reconciliation sweep even though they are never in the discovered bucket set.
+    provider = FakeCatalogProvider()
+    repository = CatalogRepository()
+    service = CatalogSyncService(provider=provider, repository=repository)
+
+    pinned = CatalogItem(
+        slug="movie-open-demo-999999",
+        content_type="movie",
+        tmdb_id=999999,
+        title="Open Demo",
+        original_title="Open Demo",
+        overview="An obscure open-licensed film TMDB never surfaces.",
+        release_date=date(2010, 1, 1),
+        runtime_minutes=90,
+        tmdb_url="https://www.themoviedb.org/movie/999999",
+        is_active=True,
+        is_pinned=True,
+    )
+    db_session.add(pinned)
+    db_session.commit()
+
+    service.sync_catalog(db=db_session, target_items=2)
+
+    survivor = repository.get_by_tmdb(db=db_session, content_type="movie", tmdb_id=999999)
+    assert survivor is not None
+    assert survivor.is_active is True, "the reconciliation sweep must not touch pinned items"
+    # The regular bucket items still reconcile normally.
+    assert repository.count_active(db=db_session) == 3

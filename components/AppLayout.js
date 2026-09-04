@@ -1,9 +1,9 @@
 import { getCurrentUser, logout } from "../contexts/authContext.js";
-import { api } from "../services/api.js?v=31";
-import { Sidebar } from "./Sidebar.js?v=25";
-import { Topbar } from "./Topbar.js?v=25";
+import { api } from "../services/api.js?v=55";
+import { Sidebar } from "./Sidebar.js?v=55";
+import { Topbar } from "./Topbar.js?v=55";
 import { AIAssistant } from "./AIAssistant.js";
-import { CommandPalette, getCommandItems } from "./CommandPalette.js?v=25";
+import { CommandPalette, getCommandItems } from "./CommandPalette.js?v=55";
 
 function escapeHtml(value) {
   return String(value ?? "")

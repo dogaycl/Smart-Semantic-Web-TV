@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -35,9 +36,25 @@ class PlaybackCatalogSyncService:
         if not self.provider.is_configured():
             return
         active_sources = self.playback_repository.count_active(db=db)
-        if active_sources >= 10:
+        if active_sources >= 10 and not self._has_hidden_playable_item(db=db):
             return
         self.sync_curated_catalog(db=db)
+
+    def _has_hidden_playable_item(self, *, db: Session) -> bool:
+        """True when a catalog item with a real playback source is inactive or unpinned.
+
+        The bucket catalog sync can deactivate a curated title (it is not one of the popular
+        bucket entries); this lets ensure_ready re-activate and pin it instead of leaving a
+        title with a working stream hidden from the catalog forever.
+        """
+        statement = (
+            select(CatalogItem.id)
+            .join(PlaybackSource, PlaybackSource.content_item_id == CatalogItem.id)
+            .where(PlaybackSource.is_active.is_(True))
+            .where((CatalogItem.is_active.is_(False)) | (CatalogItem.is_pinned.is_(False)))
+            .limit(1)
+        )
+        return db.scalar(statement) is not None
 
     def sync_curated_catalog(self, *, db: Session) -> list[CatalogItem]:
         touched = False
@@ -45,6 +62,10 @@ class PlaybackCatalogSyncService:
             item = self._resolve_item(db=db, entry=entry)
             if item is None:
                 continue
+            if not item.is_active or not item.is_pinned:
+                item.is_active = True
+                item.is_pinned = True
+                touched = True
             if self._sync_sources(db=db, item=item, entry=entry):
                 touched = True
         if touched:

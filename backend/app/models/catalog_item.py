@@ -33,6 +33,9 @@ class CatalogItem(Base):
     number_of_episodes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tmdb_url: Mapped[str] = mapped_column(String(500), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="1")
+    # Pinned items are curator-added (bulk TMDB import, wired-up playable titles) and are exempt
+    # from the bucket-sync reconciliation sweep that deactivates anything outside CATALOG_BUCKETS.
+    is_pinned: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="0")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

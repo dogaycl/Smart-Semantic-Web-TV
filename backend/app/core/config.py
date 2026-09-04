@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://127.0.0.1:5500"
     youtube_api_key: str | None = None
     gemini_api_key: str | None = None
-    gemini_embedding_model: str = "gemini-embedding-2"
+    gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimensions: int = 768
     gemini_viewing_planner_model: str = "gemini-3.6-flash"
     gemini_assistant_model: str = "gemini-3.6-flash"
@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     watch_party_chat_message_max_length: int = 400
     watch_party_drift_threshold_seconds: float = 1.5
     watch_party_sync_request_interval_seconds: int = 12
+    # Adds a small roster of illustrative "friends" to every watch room so the
+    # online/offline presence styling is visible without needing several real
+    # signed-in browsers. These are clearly-labelled demo entries, not real users.
+    watch_party_demo_participants: bool = True
 
 
 @lru_cache

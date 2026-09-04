@@ -20,6 +20,10 @@ class ChannelSeed:
     logo_url: str | None = None
     epg_source_url: str | None = None
     epg_channel_id: str | None = None
+    # Broadcaster "yayın akışı" page that publishes a one/two sentence synopsis per programme.
+    # The XMLTV feed only carries titles for Turkish channels, so the sync backfills descriptions
+    # from here by matching programme titles.
+    synopsis_url: str | None = None
 
 
 LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
@@ -53,6 +57,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://www.bloomberg.com/media-manifest/streams/us.m3u8",
             "https://bloomberg.com/media-manifest/streams/asia.m3u8",
         ],
+        logo_url="https://cdn.jsdelivr.net/gh/tv-logo/tv-logos@main/countries/united-states/bloomberg-television-us.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz",
         epg_channel_id="Bloomberg.Business.Television.us2",
     ),
@@ -324,6 +329,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         # "TRT.1.tr" carries zero programmes in the current TR3 dump; "TRT1.HD.tr" is populated.
         epg_channel_id="TRT.1.tr",
+        synopsis_url="https://www.trt1.com.tr/yayin-akisi",
     ),
     ChannelSeed(
         slug="trt-muzik",
@@ -340,6 +346,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         logo_url="https://i.imgur.com/JgUzRH8.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.MÜZİK.tr",
+        synopsis_url="https://www.trtmuzik.net.tr/yayin-akisi",
     ),
     ChannelSeed(
         slug="trt-belgesel",
@@ -356,6 +363,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/TRT_Belgesel_logo_%282019-%29.svg/960px-TRT_Belgesel_logo_%282019-%29.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.BELGESEL.HD.tr",
+        synopsis_url="https://www.trtbelgesel.com.tr/yayin-akisi",
     ),
     # TRT is Turkiye's public broadcaster and publishes these streams openly on its own CDN.
     # Every URL below was verified end to end with the same 3-stage HLS check the health
@@ -372,10 +380,12 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trt2.medya.trt.com.tr/master.m3u8",
         ],
-        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/TRT_2_logo_%282019-%29.svg/960px-TRT_2_logo_%282019-%29.svg.png",
+        logo_url="https://i.imgur.com/iOCQdyD.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
-        # No TRT 2 listing exists in the TR1 XMLTV dump, so no schedule is claimed.
+        # The XMLTV feed does not list TRT 2, but the broadcaster publishes a full timed
+        # schedule with synopses on its own site, so that is used as the source instead.
         epg_channel_id=None,
+        synopsis_url="https://www.trt2.com.tr/yayin-akisi",
     ),
     ChannelSeed(
         slug="trt-spor",
@@ -389,9 +399,10 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
             "https://tv-trtspor1.medya.trt.com.tr/master.m3u8",
             "https://tv-trtspor2.medya.trt.com.tr/master.m3u8",
         ],
-        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/TRT_Spor_logo_%282021-%29.svg/960px-TRT_Spor_logo_%282021-%29.svg.png",
+        logo_url="https://i.imgur.com/6tv0zxh.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.SPOR.tr",
+        synopsis_url="https://www.trtspor.com.tr/yayin-akisi",
     ),
     ChannelSeed(
         slug="trt-cocuk",
@@ -404,7 +415,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtcocuk.medya.trt.com.tr/master.m3u8",
         ],
-        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/TRT_%C3%87ocuk_logo_%282019-%29.svg/960px-TRT_%C3%87ocuk_logo_%282019-%29.svg.png",
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/TRT_%C3%87ocuk_logo_%282021%29.svg/960px-TRT_%C3%87ocuk_logo_%282021%29.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.ÇOCUK.HD.tr",
     ),
@@ -434,6 +445,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtavaz.medya.trt.com.tr/master.m3u8",
         ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/TRT_Avaz_logo.svg/960px-TRT_Avaz_logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.AVAZ.HD.tr",
     ),
@@ -448,6 +460,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtturk.medya.trt.com.tr/master.m3u8",
         ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/TRT_T%C3%BCrk_logo.svg/960px-TRT_T%C3%BCrk_logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.TÜRK.tr",
     ),
@@ -462,6 +475,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         preferred_stream_urls=[
             "https://tv-trtkurdi.medya.trt.com.tr/master.m3u8",
         ],
+        logo_url="https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/TRT_Kurd%C3%AE_logo.svg/960px-TRT_Kurd%C3%AE_logo.svg.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="TRT.KURDİ.tr",
     ),
@@ -496,6 +510,7 @@ LIVE_TV_CHANNEL_SEEDS: list[ChannelSeed] = [
         logo_url="https://i.imgur.com/6Tw3rUp.png",
         epg_source_url="https://epgshare01.online/epgshare01/epg_ripper_TR1.xml.gz",
         epg_channel_id="HABERTÜRK.tr",
+        synopsis_url="https://tv.haberturk.com/yayin-akisi",
     ),
     ChannelSeed(
         slug="tgrt-haber",

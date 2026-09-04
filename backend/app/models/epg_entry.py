@@ -18,6 +18,7 @@ class EPGEntry(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
     category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(600), nullable=True)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(32), nullable=False)

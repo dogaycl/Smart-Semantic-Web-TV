@@ -118,7 +118,7 @@ class PersonalizationService:
         profile = self.user_profile_repository.update(
             profile=user.profile,
             display_name=payload.display_name,
-            avatar_url=str(payload.avatar_url) if payload.avatar_url else None,
+            avatar_url=payload.avatar_url,
             interests=payload.interests,
             preferred_categories=payload.preferred_categories,
         )

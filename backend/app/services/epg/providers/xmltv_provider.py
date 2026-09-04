@@ -58,6 +58,10 @@ class XMLTVProvider:
 
             category = (elem.findtext("category") or "").strip() or None
             description = (elem.findtext("desc") or "").strip() or None
+            icon = elem.find("icon")
+            image_url = (icon.attrib.get("src") if icon is not None else "").strip() or None
+            if image_url and not image_url.lower().startswith(("http://", "https://")):
+                image_url = None
             external_id = f"{channel_id}:{start_time.isoformat()}:{title}"
             matches[channel_id].append(
                 ExternalEPGEntry(
@@ -65,6 +69,7 @@ class XMLTVProvider:
                     title=title,
                     description=description,
                     category=category,
+                    image_url=image_url,
                     start_time=start_time,
                     end_time=end_time,
                     source="xmltv",

@@ -1,4 +1,4 @@
-import { api } from "../services/api.js?v=31";
+import { api } from "../services/api.js?v=55";
 
 function progressPercent(entry, item) {
   if (!item?.runtimeMinutes) return 0;

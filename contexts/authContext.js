@@ -1,5 +1,5 @@
 import { authService } from "../services/authService.js";
-import { ApiError } from "../services/api.js?v=31";
+import { ApiError } from "../services/api.js?v=55";
 
 const AUTH_TOKEN_KEY = "synapse.auth.token";
 
@@ -36,6 +36,16 @@ function normalizeUser(user) {
 function emitAuthChanged() {
   document.dispatchEvent(new CustomEvent("auth:changed"));
 }
+
+// api.js fires this when an authenticated request comes back 401, so a stale token drops the
+// user cleanly onto the login screen instead of leaving a half-authenticated session.
+document.addEventListener("auth:expired", () => {
+  if (!currentUser && !accessToken) return;
+  clearSession();
+  if (location.hash !== "#/login") {
+    location.hash = "/login";
+  }
+});
 
 export function getAccessToken() {
   return accessToken || localStorage.getItem(AUTH_TOKEN_KEY);

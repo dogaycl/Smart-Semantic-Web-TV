@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import logging
@@ -22,6 +23,14 @@ from app.services.search.embeddings.gemini import GeminiEmbeddingService
 
 logger = logging.getLogger(__name__)
 
+# The request-path `ensure_ready` is called by every search / assistant / planner request.
+# Rebuilding the whole document set on each one is wasteful, and two concurrent rebuilds race
+# into a UNIQUE(source_key) violation. A process-wide throttle + non-blocking lock keeps the
+# request path cheap and serialises the refresh.
+_ENSURE_READY_TTL = timedelta(minutes=10)
+_ensure_ready_lock = threading.Lock()
+_last_ensure_ready_at: datetime | None = None
+
 
 class SearchIndexService:
     def __init__(
@@ -41,12 +50,26 @@ class SearchIndexService:
     def ensure_ready(self, *, db: Session) -> None:
         if not self.settings.search_index_auto_sync:
             return
-        # Request-time callers need a fresh index shape more than they need every newly seen
-        # document to block on an external embedding call. Full embedding sync is still available
-        # through the explicit sync command; the request path stays responsive and falls back to
-        # lexical/recommendation signals for any newly indexed documents until embeddings are filled.
-        has_existing_index = bool(self.search_repository.list_active(db=db))
-        self.sync_documents(db=db, populate_embeddings=not has_existing_index)
+
+        global _last_ensure_ready_at
+        now = datetime.now(timezone.utc)
+        if _last_ensure_ready_at is not None and now - _last_ensure_ready_at < _ENSURE_READY_TTL:
+            return
+        if not _ensure_ready_lock.acquire(blocking=False):
+            # Another request is already refreshing the index; this one uses what is there.
+            return
+        try:
+            # Request-time callers need a fresh index shape more than they need every newly seen
+            # document to block on an external embedding call. Full embedding sync stays available
+            # through the explicit sync command; the request path stays responsive and falls back
+            # to lexical / recommendation signals until embeddings are filled.
+            has_existing_index = bool(self.search_repository.list_active(db=db))
+            self.sync_documents(db=db, populate_embeddings=not has_existing_index)
+            _last_ensure_ready_at = datetime.now(timezone.utc)
+        except Exception:  # noqa: BLE001 - a stale index must never fail the request that needs it
+            logger.warning("Search index refresh failed; serving the existing index.", exc_info=True)
+        finally:
+            _ensure_ready_lock.release()
 
     def embedding_enabled(self) -> bool:
         return self.embedding_service.is_configured()

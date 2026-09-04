@@ -1,8 +1,8 @@
-import { api } from "../services/api.js?v=31";
+import { api } from "../services/api.js?v=55";
 import { HeroBanner } from "../components/HeroBanner.js";
 import { ContentRow } from "../components/ContentRow.js";
-import { ContentCard } from "../components/ContentCard.js?v=21";
-import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
+import { ContentCard } from "../components/ContentCard.js?v=55";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=55";
 import { getActiveProfile, getAiPreferences } from "../services/userDataService.js";
 
 export function HomePage() {

@@ -1,9 +1,17 @@
 import { ContentRow } from "../components/ContentRow.js";
 import { ContentCard } from "../components/ContentCard.js";
-import { api } from "../services/api.js?v=31";
+import { api } from "../services/api.js?v=55";
 
 function sortByReleaseDate(items) {
   return [...items].sort((a, b) => String(b.releaseDate || "").localeCompare(String(a.releaseDate || "")));
+}
+
+// Titles with a real, working playback source (open-licensed / public-domain films
+// wired up in the backend) are the only ones you can actually watch in full, so they
+// lead every On Demand shelf. Array.prototype.sort is stable, so the existing order
+// (popularity, release date, ...) is preserved within the playable and non-playable groups.
+function playableFirst(items) {
+  return [...items].sort((a, b) => (b.isPlayable ? 1 : 0) - (a.isPlayable ? 1 : 0));
 }
 
 export function OnDemandPage() {
@@ -15,17 +23,18 @@ export function OnDemandPage() {
       const rows = [...document.querySelectorAll("[data-vod-row]")];
 
       try {
-        const allItems = await api.getAllCatalog();
+        const allItemsRaw = await api.getAllCatalog();
+        const allItems = playableFirst(allItemsRaw);
         const historyEntries = await api.getMyWatchHistory();
         const history = await api.getCatalogBySlugs(
           historyEntries
             .filter((entry) => entry.contentType === "content")
             .map((entry) => entry.contentId)
         );
-        const movies = allItems.filter((item) => item.contentType === "movie");
-        const series = allItems.filter((item) => item.contentType === "tv");
-        const docs = allItems.filter((item) => item.genres.includes("Documentary") || item.genres.includes("Science Fiction") || item.genres.includes("Sci-Fi & Fantasy"));
-        const recentlyAdded = sortByReleaseDate(allItems).slice(0, 10);
+        const movies = playableFirst(allItems.filter((item) => item.contentType === "movie"));
+        const series = playableFirst(allItems.filter((item) => item.contentType === "tv"));
+        const docs = playableFirst(allItems.filter((item) => item.genres.includes("Documentary") || item.genres.includes("Science Fiction") || item.genres.includes("Sci-Fi & Fantasy")));
+        const recentlyAdded = playableFirst(sortByReleaseDate(allItems).slice(0, 10));
         const filterGroups = {
           all: [...recentlyAdded.slice(0, 6), ...movies.slice(0, 8), ...series.slice(0, 6), ...docs.slice(0, 6)],
           movies,

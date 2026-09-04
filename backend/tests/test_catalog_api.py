@@ -5,6 +5,7 @@ from app.models.catalog_genre import CatalogGenre
 from app.models.catalog_item import CatalogItem
 from app.models.catalog_season import CatalogSeason
 from app.models.catalog_video import CatalogVideo
+from app.models.playback_source import PlaybackSource
 
 
 def _freeze_sync(monkeypatch):
@@ -77,6 +78,44 @@ def test_catalog_listing_supports_filters_and_search(client, db_session, monkeyp
     assert payload["items"][0]["title"] == "Dune: Part Two"
     assert payload["items"][0]["content_type"] == "movie"
     assert payload["items"][0]["genres"] == ["Adventure", "Science Fiction"]
+
+
+def test_catalog_summary_reports_playable_state(client, db_session, monkeypatch):
+    _freeze_sync(monkeypatch)
+    monkeypatch.setattr(catalog_router.playback_sync_service, "ensure_ready", lambda **kwargs: None)
+
+    playable = _create_catalog_item(db_session)
+    metadata_only = _create_catalog_item(
+        db_session,
+        slug="movie-arrival-329865",
+        tmdb_id=329865,
+        title="Arrival",
+        original_title="Arrival",
+        popularity=9999.0,
+        tmdb_url="https://www.themoviedb.org/movie/329865",
+    )
+    db_session.add(
+        PlaybackSource(
+            content_item_id=playable.id,
+            name="Internet Archive Embed",
+            source_type="external",
+            playback_url="https://archive.org/embed/example",
+            embed_url="https://archive.org/embed/example",
+            is_primary=True,
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/catalog/movies")
+    assert response.status_code == 200
+    by_title = {item["title"]: item for item in response.json()["items"]}
+    assert by_title["Dune: Part Two"]["is_playable"] is True
+    assert by_title["Arrival"]["is_playable"] is False
+
+    # Arrival has the higher popularity, but playable_desc must still list the watchable title first.
+    ordered = client.get("/api/catalog/movies", params={"sort": "playable_desc"}).json()["items"]
+    assert [item["title"] for item in ordered][:2] == ["Dune: Part Two", "Arrival"]
 
 
 def test_catalog_detail_returns_trailer_seasons_and_related_items(client, db_session, monkeypatch):

@@ -1,4 +1,4 @@
-import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=21";
+import { isFavorite, toggleFavorite } from "../services/favoritesService.js?v=55";
 
 export function gradient(colors) {
   return `linear-gradient(135deg, ${colors})`;
@@ -39,6 +39,15 @@ export function ContentCard(item, options = {}) {
         });
       });
     }
+    // "Full" titles have a real playable source - jump straight into the player instead of
+    // making the viewer open the detail page first.
+    document.querySelectorAll(`[data-watch-slug="${item.slug || item.id}"]`).forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        location.hash = `/watch/${item.slug || item.id}`;
+      });
+    });
   });
 
   return `
@@ -47,7 +56,7 @@ export function ContentCard(item, options = {}) {
         ${item.poster ? `<img class="poster-img" src="${item.poster}" alt="${item.title} poster" loading="lazy" />` : ""}
         <div class="poster-topline">
           <span class="badge">${item.category}</span>
-          ${item.primaryGenre ? `<span class="relevance">${item.primaryGenre}</span>` : ""}
+          ${item.isPlayable ? `<button type="button" class="relevance playable-badge" data-watch-slug="${item.slug || item.id}" title="Watch now">▶ Watch</button>` : (item.primaryGenre ? `<span class="relevance">${item.primaryGenre}</span>` : "")}
         </div>
         <div class="card-overlay">
           <strong>${item.title}</strong>

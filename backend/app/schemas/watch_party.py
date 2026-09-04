@@ -59,7 +59,7 @@ class WatchRoomParticipantRead(BaseModel):
     user_id: int
     username: str
     display_name: str
-    avatar_url: HttpUrl | None = None
+    avatar_url: str | None = None
     is_host: bool
     joined_at: datetime
     last_seen_at: datetime | None = None
@@ -71,7 +71,7 @@ class WatchRoomMessageRead(BaseModel):
     user_id: int
     username: str
     display_name: str
-    avatar_url: HttpUrl | None = None
+    avatar_url: str | None = None
     message_text: str
     created_at: datetime
 

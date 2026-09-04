@@ -14,7 +14,10 @@ from app.services.llm.base import LLMService
 
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT_MS = 45_000
+REQUEST_TIMEOUT_MS = 30_000
+# The assistant is an interactive chat: if the model has not answered quickly it is better to
+# drop to the deterministic reply than to keep the user waiting.
+ASSISTANT_TIMEOUT_MS = 15_000
 RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
 
 ResponseSchema = TypeVar("ResponseSchema", bound=BaseModel)
@@ -47,6 +50,7 @@ class GeminiLLMService(LLMService):
             model=self.settings.gemini_assistant_model,
             prompt=prompt,
             response_schema=AssistantLLMResponse,
+            timeout_ms=ASSISTANT_TIMEOUT_MS,
         )
 
     def _generate(
@@ -55,6 +59,7 @@ class GeminiLLMService(LLMService):
         model: str,
         prompt: str,
         response_schema: type[ResponseSchema],
+        timeout_ms: int = REQUEST_TIMEOUT_MS,
     ) -> ResponseSchema:
         if not self.is_configured():
             raise RuntimeError("Gemini LLM service is not configured.")
@@ -63,13 +68,16 @@ class GeminiLLMService(LLMService):
         client = genai.Client(
             api_key=self.settings.gemini_api_key,
             http_options=types.HttpOptions(
-                timeout=REQUEST_TIMEOUT_MS,
+                timeout=timeout_ms,
+                # Keep the worst case bounded: a rate-limited generation should fall back to the
+                # deterministic reply quickly rather than making the user wait through long
+                # exponential back-off.
                 retry_options=types.HttpRetryOptions(
-                    attempts=3,
-                    initial_delay=1.0,
-                    max_delay=8.0,
+                    attempts=2,
+                    initial_delay=0.6,
+                    max_delay=3.0,
                     exp_base=2.0,
-                    jitter=0.5,
+                    jitter=0.3,
                     http_status_codes=RETRYABLE_STATUS_CODES,
                 ),
             ),

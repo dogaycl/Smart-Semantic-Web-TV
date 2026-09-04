@@ -31,6 +31,11 @@ class StreamHealthResult:
     quality: str | None = None
     error: str | None = None
     checked_at: datetime | None = None
+    # True when the check itself could not complete (DNS failure, connection timeout,
+    # upstream 5xx/429) rather than the stream giving a real "not playable" answer
+    # (404, not-a-manifest, missing CORS). Callers keep the last known good status on a
+    # check failure instead of marking a working channel dead because of a network blip.
+    check_failed: bool = False
 
 
 @dataclass(slots=True)
@@ -42,4 +47,5 @@ class ExternalEPGEntry:
     source: str
     description: str | None = None
     category: str | None = None
+    image_url: str | None = None
     payload: dict[str, str] = field(default_factory=dict)

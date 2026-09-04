@@ -83,7 +83,9 @@ class RetrievalService:
         db: Session,
         payload: AssistantChatRequest,
     ) -> RetrievedContext:
-        self.index_service.ensure_ready(db=db)
+        # The assistant reads context straight from the catalog / EPG tables; it only uses the
+        # search index for one supplementary chunk, so it does not pay for an index refresh here.
+        # Search and My Channel keep the index warm.
 
         if payload.context_type == "catalog":
             context = self._retrieve_catalog_context(db=db, payload=payload)
@@ -436,17 +438,23 @@ class RetrievalService:
             return []
 
         query_terms = set(tokenize_text(query))
-        query_embedding: list[float] | None = None
-        if self.embedding_service.is_configured():
+
+        # The query embedding is only ever compared against this one document's stored vector, so
+        # there is nothing to gain (and a slow external call to lose) when the document has no
+        # embedding - which is the common case while the embedding quota is unavailable.
+        semantic_score = 0.0
+        if (
+            search_document is not None
+            and search_document.embedding
+            and self.embedding_service.is_configured()
+        ):
             try:
                 query_embedding = self.embedding_service.embed_query(query)
             except Exception as exc:
                 logger.warning("Gemini embedding query failed, ranking chunks lexically only: %s", exc)
                 query_embedding = None
-
-        semantic_score = 0.0
-        if query_embedding and search_document and search_document.embedding:
-            semantic_score = cosine_similarity(query_embedding, search_document.embedding)
+            if query_embedding:
+                semantic_score = cosine_similarity(query_embedding, search_document.embedding)
 
         ranked: list[RetrievedChunk] = []
         for chunk in chunks:

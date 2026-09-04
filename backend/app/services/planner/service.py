@@ -272,6 +272,10 @@ class ViewingPlannerService:
         tz = ZoneInfo(payload.timezone)
         local_start = datetime.combine(payload.plan_date, payload.available_start, tzinfo=tz)
         local_end = datetime.combine(payload.plan_date, payload.available_end, tzinfo=tz)
+        if local_end <= local_start:
+            # Matches ViewingPlanGenerateRequest: an end not after the start means the window
+            # runs past midnight into the following day.
+            local_end += timedelta(days=1)
         window_start = local_start.astimezone(timezone.utc)
         window_end = local_end.astimezone(timezone.utc)
         window_minutes = int((window_end - window_start).total_seconds() // 60)
